@@ -18,8 +18,9 @@ func TestBlockPosition1(t *testing.T) {
 		{"003.122.207.000", 0}, // exists, first entry of new block (partial line)
 		{"003.126.183.000", 4096},
 		{"024.066.017.000", 12288}, // exists, first entry of new block, exact block break
+		{"032.176.184.000", 20480}, // exists, entry with dups
 		{"100.000.000.000", 126976},
-		{"200.000.000.000", 217088},
+		{"200.000.000.000", 221184},
 		{"223.252.003.000", 241664},
 		{"255.255.255.255", 241664}, // does not exist
 	}
@@ -45,21 +46,22 @@ func TestBlockPosition2(t *testing.T) {
 		key    string
 		expect int64
 	}{
-		{"000.000.000.000", 0},     // does not exist
-		{"001.000.128.000", 0},     // exists, first line
-		{"001.034.164.000", 8192},  // exists
-		{"003.122.206.000", 12288}, // does not exist
-		{"003.122.207.000", 12288}, // exists
-		{"003.126.183.000", 12288},
-		{"100.000.000.000", 135168},
+		{"000.000.000.000", 0},    // does not exist
+		{"001.000.128.000", 0},    // exists, first line
+		{"001.034.164.000", 8192}, // exists
+		{"003.122.206.000", 8192}, // does not exist
+		{"003.122.207.000", 8192}, // exists
+		{"003.126.183.000", 8192},
+		{"100.000.000.000", 131072},
 		{"200.000.000.000", 229376},
-		{"223.252.003.000", 249856},
-		{"255.255.255.255", 249856}, // does not exist
+		{"223.252.003.000", 245760},
+		{"255.255.255.255", 245760}, // does not exist
 	}
 
 	r, l := open(t, "testdata/rdns2.csv")
 
-	s := NewSearcher(r, l)
+	o := Options{blocksize: 8192, compare: PrefixCompareString}
+	s := NewSearcherOptions(r, l, o)
 
 	for _, tc := range tests {
 		pos, err := s.BlockPosition([]byte(tc.key))
@@ -83,7 +85,8 @@ func TestLinePosition1(t *testing.T) {
 		{"003.122.207.000", 4123},   // exists, first entry of new block (partial line)
 		{"003.126.183.000", 4211},   // exists
 		{"024.066.017.000", 16384},  // exists, first entry of new block, exact block break
-		{"223.252.003.000", 243581}, // exists
+		{"032.176.184.000", 20703},  // exists, entry with dups
+		{"223.252.003.000", 243896}, // exists
 		{"000.000.000.000", -1},     // does not exist
 		{"003.122.206.000", -1},     // does not exist
 		{"100.000.000.000", -1},     // does not exist
@@ -107,7 +110,7 @@ func TestLinePosition1(t *testing.T) {
 }
 
 // Test Line() using testdata/rdns1.csv, existing keys
-func TestLine(t *testing.T) {
+func TestLine1(t *testing.T) {
 	var tests = []struct {
 		key    string
 		expect string
@@ -117,6 +120,7 @@ func TestLine(t *testing.T) {
 		{"003.122.207.000", "003.122.207.000,ec2-3-122-207-0.eu-central-1.compute.amazonaws.com,202003,amazonaws.com"},
 		{"003.126.183.000", "003.126.183.000,ec2-3-126-183-0.eu-central-1.compute.amazonaws.com,202003,amazonaws.com"},
 		{"024.066.017.000", "024.066.017.000,S0106905851b9f0e0.rd.shawcable.net,202003,shawcable.net"},
+		{"032.176.184.000", "032.176.184.000,mobile000.mycingular.net,202003,mycingular.net"},
 		{"223.252.003.000", "223.252.003.000,223-252-3-0.as45671.net,202003,as45671.net"},
 	}
 
