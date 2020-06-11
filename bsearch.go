@@ -61,12 +61,13 @@ func NewSearcherOptions(r io.ReaderAt, length int64, options Options) *Searcher 
 	return &s
 }
 
-// NewSearcherFile returns a new Searcher for filepath f, using default options.
-// NewSearcherFile opens the file and determines its length using os calls - any
-// errors are returned to the user.
-func NewSearcherFile(filepath string) (*Searcher, error) {
+// NewSearcherFile returns a new Searcher for filename f, using default options.
+// NewSearcherFile opens the file and determines its length using os.Open and
+// os.Stat - any errors are returned to the caller. The caller is responsible
+// for calling *Searcher.Close() when finished (e.g. via defer).
+func NewSearcherFile(filename string) (*Searcher, error) {
 	// Get file length
-	stat, err := os.Stat(filepath)
+	stat, err := os.Stat(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +77,7 @@ func NewSearcherFile(filepath string) (*Searcher, error) {
 	filesize := stat.Size()
 
 	// Open file
-	fh, err := os.Open(filepath)
+	fh, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -287,6 +288,13 @@ func (s *Searcher) Line(b []byte) ([]byte, error) {
 // Reader returns the searcher's underlying reader
 func (s *Searcher) Reader() io.ReaderAt {
 	return s.r
+}
+
+// Close closes the searcher's underlying reader (if applicable)
+func (s *Searcher) Close() {
+	if closer, ok := s.r.(io.Closer); ok {
+		closer.Close()
+	}
 }
 
 // PrefixCompare compares the given byte slices (truncated to the length of the shorter)

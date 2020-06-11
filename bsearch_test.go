@@ -28,6 +28,7 @@ func TestBlockPosition1(t *testing.T) {
 	r, l := open(t, "testdata/rdns1.csv")
 
 	s := NewSearcher(r, l)
+	defer s.Close() // noop - test
 
 	for _, tc := range tests {
 		pos, err := s.BlockPosition([]byte(tc.key))
@@ -38,6 +39,7 @@ func TestBlockPosition1(t *testing.T) {
 			t.Errorf("%q: got %d, expected %d\n", tc.key, pos, tc.expect)
 		}
 	}
+
 }
 
 // Test BlockPosition() using testdata/rdns2.csv
@@ -62,6 +64,7 @@ func TestBlockPosition2(t *testing.T) {
 
 	o := Options{blocksize: 8192, compare: PrefixCompareString}
 	s := NewSearcherOptions(r, l, o)
+	defer s.Close() // noop - test
 
 	for _, tc := range tests {
 		pos, err := s.BlockPosition([]byte(tc.key))
@@ -124,9 +127,11 @@ func TestLine1(t *testing.T) {
 		{"223.252.003.000", "223.252.003.000,223-252-3-0.as45671.net,202003,as45671.net"},
 	}
 
-	r, l := open(t, "testdata/rdns1.csv")
-
-	s := NewSearcher(r, l)
+	s, err := NewSearcherFile("testdata/rdns1.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close() // required for NewSearcherFile
 
 	for _, tc := range tests {
 		line, err := s.Line([]byte(tc.key))
@@ -139,6 +144,7 @@ func TestLine1(t *testing.T) {
 	}
 }
 
+// Helper if not using NewSearcherFile
 func open(t *testing.T, filename string) (fh *os.File, length int64) {
 	fh, err := os.Open(filename)
 	if err != nil {
