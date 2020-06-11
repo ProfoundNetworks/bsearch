@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"os"
 )
 
 // TODO: how do we change the comparison function? e.g. BytesEqual, StringEqual, BytesLessEqual, StringLessEqual
@@ -21,6 +22,7 @@ const (
 var (
 	ErrNotFound             = errors.New("not found")
 	ErrLineExceedsBlocksize = errors.New("line length exceeds blocksize")
+	ErrNotFile              = errors.New("filename exists but is not a file")
 )
 
 type Options struct {
@@ -57,6 +59,31 @@ func NewSearcherOptions(r io.ReaderAt, length int64, options Options) *Searcher 
 	}
 	s.buf = make([]byte, s.blocksize+1) // we read blocksize+1 bytes to check for a preceding newline
 	return &s
+}
+
+// NewSearcherFile returns a new Searcher for filepath f, using default options.
+// NewSearcherFile opens the file and determines its length using os calls - any
+// errors are returned to the user.
+func NewSearcherFile(filepath string) (*Searcher, error) {
+	// Get file length
+	stat, err := os.Stat(filepath)
+	if err != nil {
+		return nil, err
+	}
+	if stat.IsDir() {
+		return nil, ErrNotFile
+	}
+	filesize := stat.Size()
+
+	// Open file
+	fh, err := os.Open(filepath)
+	if err != nil {
+		return nil, err
+	}
+
+	s := Searcher{r: fh, l: filesize, blocksize: defaultBlocksize, compare: PrefixCompare}
+	s.buf = make([]byte, s.blocksize+1) // we read blocksize+1 bytes to check for a preceding newline
+	return &s, nil
 }
 
 // BlockPosition does a block-based binary search on its underlying reader,
@@ -255,6 +282,11 @@ func (s *Searcher) Line(b []byte) ([]byte, error) {
 	}
 
 	return clone(s.buf[:idx]), nil
+}
+
+// Reader returns the searcher's underlying reader
+func (s *Searcher) Reader() io.ReaderAt {
+	return s.r
 }
 
 // PrefixCompare compares the given byte slices (truncated to the length of the shorter)
