@@ -276,10 +276,10 @@ BLOCK:
 				if readErr == io.EOF {
 					break BLOCK
 				}
-				trailingPosition = blockPosition + int64(begin)
+				//fmt.Fprintf(os.Stderr,
+				//	"+ out-of-data re-read - tp=%d, bp=%d, begin=%d, limit=%d, bytesread=%d, bp => %d\n",
+				//	trailingPosition, blockPosition, begin, begin+len(b), bytesread, blockPosition+int64(begin)-1)
 				blockPosition = blockPosition + int64(begin) - 1
-				//fmt.Fprintf(os.Stderr, "+ out-of-data re-read - begin=%d, limit=%d, bytesread=%d, blockPosition => %d\n",
-				//	begin, begin+len(b), bytesread, blockPosition)
 				continue BLOCK
 			}
 		}
