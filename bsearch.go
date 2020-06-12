@@ -28,6 +28,7 @@ var (
 type Options struct {
 	blocksize int64                 // data blocksize used for binary search
 	compare   func(a, b []byte) int // prefix comparison function
+	MatchLE   bool                  // LinePosition uses less-than-or-equal-to match semantics
 }
 
 // Searcher provides binary search functionality for line-ordered byte streams by prefix.
@@ -37,6 +38,7 @@ type Searcher struct {
 	blocksize int64                 // data blocksize used for binary search
 	buf       []byte                // data buffer (blocksize+1)
 	compare   func(a, b []byte) int // prefix comparison function
+	matchLE   bool                  // LinePosition uses less-than-or-equal-to match semantics
 }
 
 // NewSearcher returns a new Searcher for the ReaderAt r for data of length bytes,
@@ -56,6 +58,9 @@ func NewSearcherOptions(r io.ReaderAt, length int64, options Options) *Searcher 
 	}
 	if options.compare != nil {
 		s.compare = options.compare
+	}
+	if options.MatchLE {
+		s.matchLE = true
 	}
 	s.buf = make([]byte, s.blocksize+1) // we read blocksize+1 bytes to check for a preceding newline
 	return &s
@@ -173,22 +178,29 @@ func (s *Searcher) BlockPosition(b []byte) (int64, error) {
 // LinePosition returns the byte offset in the reader for the first line
 // that begins with the byte slice b, using a binary search (data must be
 // bytewise-ordered).
-// Returns -1 and bsearch.ErrNotFound if no matching line is found, and -1
-// and the error on any other error.
+//
+// If no line with prefix b is found, LinePosition returns -1 and
+// bsearch.ErrNotFound if OptionsMatchLE is false (the default).
+// If no line with prefix b is found and Options.MatchLE is true,
+// LinePosition returns the byte offset of the line immediately before
+// where a matching line should be i.e. the last line with a prefix less
+// than b.
+//
+// On any other error, LinePosition returns -1 and the error.
 func (s *Searcher) LinePosition(b []byte) (int64, error) {
 	// Get BlockPosition to start from
 	blockPosition, err := s.BlockPosition(b)
 	if err != nil {
 		return -1, err
 	}
-	//fmt.Fprintf(os.Stderr, "+ %s: blockPosition %d\n", string(b), blockPosition)
 
 	// Start one byte back in case we have a block-end newline
 	if blockPosition > 0 {
 		blockPosition--
 	}
 
-	// Loop in case we have to read more than one block
+	// Loop in case we need to read more than one block
+	var trailingPosition int64 = -1
 BLOCK:
 	for {
 		// Read next block
@@ -196,6 +208,7 @@ BLOCK:
 		if err != nil && err != io.EOF {
 			return -1, err
 		}
+		readErr := err
 
 		// Skip till first newline
 		begin := 0
@@ -204,7 +217,7 @@ BLOCK:
 			if idx == -1 {
 				// If no new newline is found we're either at EOF, or we have a block with no newlines at all(?!)
 				if err != nil && err == io.EOF {
-					return -1, ErrNotFound
+					break
 				} else {
 					// Corner case - no newlines in non-eof block(?) - increment blockPosition and retry
 					blockPosition += s.blocksize
@@ -219,10 +232,9 @@ BLOCK:
 		for {
 			// Compare buf from begin vs. b
 			cmp := s.compare(s.buf[begin:begin+len(b)], b)
-			//fmt.Fprintf(os.Stderr, "+ comparing %q vs. %q == %d\n",
-			//	string(s.buf[begin:begin+len(b)]), string(b), cmp)
+			//fmt.Fprintf(os.Stderr, "+ comparing %q (begin %d) vs. %q == %d\n",
+			//	string(s.buf[begin:begin+len(b)]), begin, string(b), cmp)
 			if cmp == 0 {
-				//fmt.Fprintf(os.Stderr, "+ found %q: LinePosition %d\n", string(b), blockPosition+int64(begin))
 				return blockPosition + int64(begin), nil
 			} else if cmp == 1 {
 				break BLOCK
@@ -231,24 +243,37 @@ BLOCK:
 			// Current line < b; find next newline
 			idx := bytes.IndexByte(s.buf[begin:bytesread], '\n')
 			if idx == -1 {
+				if readErr == io.EOF {
+					break BLOCK
+				}
 				// No newline found - re-read from current position
-				blockPosition += int64(begin)
+				trailingPosition = blockPosition + int64(begin)
+				blockPosition = blockPosition + int64(begin) - 1
 				//fmt.Fprintf(os.Stderr, "+ no newline re-read - begin=%d, blockPosition => %d\n",
 				//	begin, blockPosition)
 				continue BLOCK
 			}
 
+			trailingPosition = blockPosition + int64(begin)
 			begin += idx + 1
-			//fmt.Fprintf(os.Stderr, "+ begin incremented by %d to %d\n", idx+1, begin)
 
 			// Out of data - re-read from current newline
 			if begin+len(b) > bytesread {
-				blockPosition += int64(begin) - 1
-				//fmt.Fprintf(os.Stderr, "+ out-of-data re-read - begin=%d, blockPosition => %d\n",
-				//	begin-1, blockPosition)
+				if readErr == io.EOF {
+					break BLOCK
+				}
+				trailingPosition = blockPosition + int64(begin)
+				blockPosition = blockPosition + int64(begin) - 1
+				//fmt.Fprintf(os.Stderr, "+ out-of-data re-read - begin=%d, limit=%d, bytesread=%d, blockPosition => %d\n",
+				//	begin, begin+len(b), bytesread, blockPosition)
 				continue BLOCK
 			}
 		}
+	}
+
+	// If using less-than-or-equal-to semantics, return trailingPosition if that is set
+	if s.matchLE && trailingPosition > -1 {
+		return trailingPosition, nil
 	}
 
 	return -1, ErrNotFound
@@ -274,7 +299,7 @@ func (s *Searcher) Line(b []byte) ([]byte, error) {
 	if idx == -1 {
 		// No newline found
 		if err != nil && err == io.EOF {
-			// EOF w/o a newline is okay - return current buffer
+			// EOF w/o newline is okay - return current buffer
 			return clone(s.buf[:bytesread]), nil
 		} else if int64(bytesread) == s.blocksize {
 			// No newline found in entire block
@@ -282,6 +307,7 @@ func (s *Searcher) Line(b []byte) ([]byte, error) {
 		}
 	}
 
+	// Newline found at idx
 	return clone(s.buf[:idx]), nil
 }
 

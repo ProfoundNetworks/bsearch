@@ -144,6 +144,47 @@ func TestLine1(t *testing.T) {
 	}
 }
 
+// Test with Options.MatchLE set
+func TestMatchLE(t *testing.T) {
+	var tests = []struct {
+		key    string
+		expect int64
+	}{
+		{"000.000.000.000", -1},     // does not exist, before first line
+		{"001.000.127.000", -1},     // does not exist, before first line
+		{"001.000.127.255", -1},     // does not exist, before first line
+		{"001.000.128.000", 0},      // exists, first line
+		{"001.034.164.000", 79},     // exists
+		{"003.122.206.000", 4033},   // does not exist
+		{"003.122.207.000", 4123},   // exists
+		{"003.126.183.000", 4211},   // exists
+		{"100.000.000.000", 128327}, // does not exist
+		{"192.184.097.255", 217624}, // does not exist
+		{"192.184.098.000", 217695}, // exists
+		{"192.184.098.100", 217695}, // does not exist
+		{"200.000.000.000", 221414}, // does not exist
+		{"223.252.003.000", 243896}, // exists
+		{"223.252.003.001", 243896}, // does not exist
+		{"255.255.255.255", 243896}, // does not exist
+	}
+
+	r, l := open(t, "testdata/rdns1.csv")
+
+	//o := Options{}
+	o := Options{MatchLE: true}
+	s := NewSearcherOptions(r, l, o)
+
+	for _, tc := range tests {
+		pos, err := s.LinePosition([]byte(tc.key))
+		if err != nil && err != ErrNotFound {
+			t.Fatalf("%s: %s\n", tc.key, err.Error())
+		}
+		if pos != tc.expect {
+			t.Errorf("%q: got %d, expected %d\n", tc.key, pos, tc.expect)
+		}
+	}
+}
+
 // Helper if not using NewSearcherFile
 func open(t *testing.T, filename string) (fh *os.File, length int64) {
 	fh, err := os.Open(filename)
