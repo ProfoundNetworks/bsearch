@@ -26,8 +26,8 @@ var (
 )
 
 type Options struct {
-	blocksize int64                 // data blocksize used for binary search
-	compare   func(a, b []byte) int // prefix comparison function
+	Blocksize int64                 // data blocksize used for binary search
+	Compare   func(a, b []byte) int // prefix comparison function
 	MatchLE   bool                  // LinePosition uses less-than-or-equal-to match semantics
 }
 
@@ -42,11 +42,11 @@ type Searcher struct {
 }
 
 func (s *Searcher) setOptions(options Options) {
-	if options.blocksize > 0 {
-		s.blocksize = options.blocksize
+	if options.Blocksize > 0 {
+		s.blocksize = options.Blocksize
 	}
-	if options.compare != nil {
-		s.compare = options.compare
+	if options.Compare != nil {
+		s.compare = options.Compare
 	}
 	if options.MatchLE {
 		s.matchLE = true
