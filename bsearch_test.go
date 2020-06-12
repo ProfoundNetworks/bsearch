@@ -168,11 +168,12 @@ func TestMatchLE(t *testing.T) {
 		{"255.255.255.255", 243896}, // does not exist
 	}
 
-	r, l := open(t, "testdata/rdns1.csv")
-
-	//o := Options{}
 	o := Options{MatchLE: true}
-	s := NewSearcherOptions(r, l, o)
+	s, err := NewSearcherFileOptions("testdata/rdns1.csv", o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close() // required for NewSearcherFile
 
 	for _, tc := range tests {
 		pos, err := s.LinePosition([]byte(tc.key))

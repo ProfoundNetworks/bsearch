@@ -41,6 +41,18 @@ type Searcher struct {
 	matchLE   bool                  // LinePosition uses less-than-or-equal-to match semantics
 }
 
+func (s *Searcher) setOptions(options Options) {
+	if options.blocksize > 0 {
+		s.blocksize = options.blocksize
+	}
+	if options.compare != nil {
+		s.compare = options.compare
+	}
+	if options.MatchLE {
+		s.matchLE = true
+	}
+}
+
 // NewSearcher returns a new Searcher for the ReaderAt r for data of length bytes,
 // using default options.
 func NewSearcher(r io.ReaderAt, length int64) *Searcher {
@@ -53,15 +65,7 @@ func NewSearcher(r io.ReaderAt, length int64) *Searcher {
 // overriding the default options with those in options.
 func NewSearcherOptions(r io.ReaderAt, length int64, options Options) *Searcher {
 	s := Searcher{r: r, l: length, blocksize: defaultBlocksize, compare: PrefixCompare}
-	if options.blocksize > 0 {
-		s.blocksize = options.blocksize
-	}
-	if options.compare != nil {
-		s.compare = options.compare
-	}
-	if options.MatchLE {
-		s.matchLE = true
-	}
+	s.setOptions(options)
 	s.buf = make([]byte, s.blocksize+1) // we read blocksize+1 bytes to check for a preceding newline
 	return &s
 }
@@ -90,6 +94,16 @@ func NewSearcherFile(filename string) (*Searcher, error) {
 	s := Searcher{r: fh, l: filesize, blocksize: defaultBlocksize, compare: PrefixCompare}
 	s.buf = make([]byte, s.blocksize+1) // we read blocksize+1 bytes to check for a preceding newline
 	return &s, nil
+}
+
+// NewSearcherFileOptions returns a new Searcher for filename f, using options.
+func NewSearcherFileOptions(filename string, options Options) (*Searcher, error) {
+	s, err := NewSearcherFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	s.setOptions(options)
+	return s, nil
 }
 
 // BlockPosition does a block-based binary search on its underlying reader,
