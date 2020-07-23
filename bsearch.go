@@ -1,6 +1,10 @@
 /*
-Package bsearch provides binary search functionality for line-ordered byte streams
-by prefix (e.g. for searching sorted text files).
+bsearch provides binary search functionality for line-ordered byte streams
+by prefix (e.g. for searching `LC_COLLATE=C` sorted text files).
+
+TODO: can we change the comparison function to support UTF-8 ordered keys?
+      e.g. BytesEqual, StringEqual, BytesLessEqual, StringLessEqual
+TODO: should we check for/warn on non-ordered data?
 */
 
 package bsearch
@@ -11,9 +15,6 @@ import (
 	"io"
 	"os"
 )
-
-// TODO: how do we change the comparison function? e.g. BytesEqual, StringEqual, BytesLessEqual, StringLessEqual
-// TODO: should we check for/warn on non-ordered data?
 
 const (
 	defaultBlocksize = 4096

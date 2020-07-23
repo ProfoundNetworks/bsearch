@@ -3,8 +3,11 @@ bsearch
 =======
 
 bsearch is a go library providing binary search functionality for line-ordered
-byte streams (such as sorted text files). It allows fast lookups based on line
-prefixes, like the venerable `look(1)` unix utility.
+byte streams (such as `LC_COLLATE=C` sorted text files). It allows very fast
+lookups based on line prefixes, like the venerable `look(1)` unix utility.
+
+bsearch currently only supports bytewise key comparisons (not UTF-8 collations).
+This restriction may be removed in the future.
 
 Usage
 -----
@@ -13,7 +16,8 @@ Usage
     import "github.com/ProfoundNetworks/bsearch"
 
     // Instantiate searcher from a file
-    bss := bsearch.NewSearcherFile(filepath)
+    bss, err := bsearch.NewSearcherFile(filepath)
+    defer bss.Close()
 
     // Or instantiate searcher from an io.ReaderAt
     bss := bsearch.NewSearcher(reader, datalen)
