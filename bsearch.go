@@ -42,6 +42,7 @@ type Searcher struct {
 	matchLE   bool                  // LinePosition uses less-than-or-equal-to match semantics
 }
 
+// setOptions sets the given options on searcher
 func (s *Searcher) setOptions(options Options) {
 	if options.Blocksize > 0 {
 		s.blocksize = options.Blocksize
@@ -71,7 +72,7 @@ func NewSearcherOptions(r io.ReaderAt, length int64, options Options) *Searcher 
 	return &s
 }
 
-// NewSearcherFile returns a new Searcher for filename f, using default options.
+// NewSearcherFile returns a new Searcher for filename, using default options.
 // NewSearcherFile opens the file and determines its length using os.Open and
 // os.Stat - any errors are returned to the caller. The caller is responsible
 // for calling *Searcher.Close() when finished (e.g. via defer).
