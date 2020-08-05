@@ -6,8 +6,8 @@ bsearch is a go library providing binary search functionality for line-ordered
 byte streams (such as `LC_COLLATE=C` sorted text files). It allows very fast
 lookups based on line prefixes, like the venerable `look(1)` unix utility.
 
-Also can be used via a `DB` object with a key-value-store-like interface,
-allowing sorted CSV files to be used like a key-value store, with excellent
+bsearch can also be used via a `DB` object with a simple db-like interface,
+allowing sorted CSV files to be used as a key-value store, with excellent
 performance.
 
 bsearch currently only supports bytewise key comparisons (not UTF-8 collations).
