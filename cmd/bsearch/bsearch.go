@@ -17,10 +17,9 @@ import (
 
 // Options
 var opts struct {
-	Verbose []bool `short:"v" long:"verbose" description:"display verbose debug output (repeatable)"`
-	//BlockSize int64  `short:"b" long:"bs" description:"blocksize to use for searching (bytes)" default:"4096"`
-	Delim string `short:"d" long:"delim" description:"require SearchString to be followed by a delimiter (any char in this string)"`
-	Rev   bool   `short:"r" long:"rev" description:"reverse output lines when printing"`
+	Verbose bool   `short:"v" long:"verbose" description:"display verbose debug output"`
+	Delim   string `short:"d" long:"delim" description:"require SearchString to be followed by a delimiter (any char in this string)"`
+	Rev     bool   `short:"r" long:"rev" description:"reverse SearchString for search, and output lines when printing"`
 	//Utf8  bool   `short:"u" long:"utf8" description:"use utf8 string comparisons instead of (default) bytewise-compare"`
 	Args struct {
 		SearchString string
@@ -37,7 +36,7 @@ func usage() {
 }
 
 func vprintf(format string, args ...interface{}) {
-	if len(opts.Verbose) >= 1 {
+	if opts.Verbose {
 		fmt.Fprintf(os.Stderr, format, args...)
 	}
 }
@@ -54,17 +53,8 @@ func main() {
 
 	// Setup
 	log.SetFlags(0)
-	// Mmap input file
-	/*
-		reader, err := mmap.Open(opts.Args.Filename)
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer reader.Close()
-	*/
 
 	// Instantiate searcher
-	//bso := bsearch.Options{}
 	bss, err := bsearch.NewSearcherFile(opts.Args.Filename)
 	if err != nil {
 		log.Fatal(err)
@@ -72,15 +62,23 @@ func main() {
 	reader := bss.Reader()
 
 	// Search
-	posn, err := bss.LinePosition([]byte(opts.Args.SearchString))
+	searchStr := opts.Args.SearchString
+	if opts.Rev {
+		searchStr = stringutil.Reverse(searchStr)
+	}
+	//vprintf("+ searchStr: %q\n", searchStr)
+	posn, err := bss.LinePosition([]byte(searchStr))
 	if err != nil && err == bsearch.ErrNotFound {
 		// Not found
+		if opts.Verbose {
+			log.Println("Not found")
+		}
 		os.Exit(1)
 	} else if err != nil {
 		// General error
 		log.Fatal(err)
 	}
-	vprintf("+ bsearch.LinePosition: %d\n", posn)
+	//vprintf("+ bsearch.LinePosition: %d\n", posn)
 
 	p, err := reader.(io.ReadSeeker).Seek(posn, io.SeekStart)
 	if err != nil {
@@ -92,12 +90,12 @@ func main() {
 
 	// Scan all lines that match
 	scanner := bufio.NewScanner(reader.(io.Reader))
-	searchStringLen := len(opts.Args.SearchString)
+	searchStringLen := len(searchStr)
 	for scanner.Scan() {
 		line := scanner.Text()
-		vprintf("+ line: %s\n", line)
-		if strings.HasPrefix(line, opts.Args.SearchString) {
-			// If --delim is set, the next character in line after SearchString must be in opts.Delim
+		//vprintf("+ line: %s\n", line)
+		if strings.HasPrefix(line, searchStr) {
+			// If --delim is set, the next character in line after searchStr must be in opts.Delim
 			// (or the end of the string)
 			if opts.Delim != "" {
 				if len(line) > searchStringLen {
@@ -111,8 +109,8 @@ func main() {
 				line = stringutil.Reverse(line)
 			}
 			fmt.Println(line)
-		} else if line > opts.Args.SearchString {
-			// If line > SearchString, we're done
+		} else if line > searchStr {
+			// If line > searchStr we're done
 			break
 		}
 	}
