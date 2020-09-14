@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/ProfoundNetworks/bsearch"
-	"github.com/golang/example/stringutil"
 	flags "github.com/jessevdk/go-flags"
 )
 
@@ -64,7 +63,7 @@ func main() {
 	// Search
 	searchStr := opts.Args.SearchString
 	if opts.Rev {
-		searchStr = stringutil.Reverse(searchStr)
+		searchStr = reverse(searchStr)
 	}
 	//vprintf("+ searchStr: %q\n", searchStr)
 	posn, err := bss.LinePosition([]byte(searchStr))
@@ -106,7 +105,7 @@ func main() {
 				}
 			}
 			if opts.Rev {
-				line = stringutil.Reverse(line)
+				line = reverse(line)
 			}
 			fmt.Println(line)
 		} else if line > searchStr {
@@ -114,4 +113,13 @@ func main() {
 			break
 		}
 	}
+}
+
+// reverse returns its argument string reversed rune-wise left to right.
+func reverse(s string) string {
+	r := []rune(s)
+	for i, j := 0, len(r)-1; i < len(r)/2; i, j = i+1, j-1 {
+		r[i], r[j] = r[j], r[i]
+	}
+	return string(r)
 }
