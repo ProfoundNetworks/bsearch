@@ -19,7 +19,8 @@ import (
 var opts struct {
 	Verbose bool   `short:"v" long:"verbose" description:"display verbose debug output"`
 	Delim   string `short:"d" long:"delim" description:"require SearchString to be followed by a delimiter (any char in this string)"`
-	Rev     bool   `short:"r" long:"rev" description:"reverse SearchString for search, and output lines when printing"`
+	Header  bool   `short:"H" long:"hdr" description:"ignore first line (header) in Filename when doing lookups"`
+	Rev     bool   `short:"r" long:"rev" description:"reverse SearchString for search, and reverse output lines when printing"`
 	//Utf8  bool   `short:"u" long:"utf8" description:"use utf8 string comparisons instead of (default) bytewise-compare"`
 	Args struct {
 		SearchString string
@@ -62,7 +63,8 @@ func main() {
 	}
 
 	// Instantiate searcher
-	bss, err := bsearch.NewSearcherFile(opts.Args.Filename)
+	o := bsearch.Options{Header: opts.Header}
+	bss, err := bsearch.NewSearcherFileOptions(opts.Args.Filename, o)
 	if err != nil {
 		log.Fatal(err)
 	}

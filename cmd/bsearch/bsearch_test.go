@@ -68,6 +68,18 @@ func TestRev(t *testing.T) {
 		search string
 		expect string
 	}{
+		{"0-0.ca", "0-0.ca", "", `0-0.ca
+www.0-0.ca
+tennis40-0.ca
+webdisk.tennis40-0.ca
+cpanel.tennis40-0.ca
+webmail.tennis40-0.ca
+tennis40-0.com.tennis40-0.ca
+www.tennis40-0.com.tennis40-0.ca
+cpcalendars.tennis40-0.ca
+cpcontacts.tennis40-0.ca
+tennis40-0.net.tennis40-0.ca
+www.tennis40-0.net.tennis40-0.ca`},
 		{"3-2-1-0.ca", "3-2-1-0.ca", "", "3-2-1-0.ca"},
 		{"3-2-1-0.ca -d '.,'", "3-2-1-0.ca", "-d '.,'", "3-2-1-0.ca"},
 		{"card1000.ca", "card1000.ca", "", "card1000.ca"},
@@ -91,6 +103,61 @@ www.fortune1000.ca`},
 
 	for _, tc := range tests {
 		cmd := "./bsearch -r " + tc.args + " " + tc.search + " " + infile
+
+		output, err := exec.Command("bash", "-c", cmd).CombinedOutput()
+		got := strings.TrimSpace(string(output))
+		if err != nil {
+			t.Fatalf("%s: %s", err.Error(), got)
+		}
+
+		if got != tc.expect {
+			t.Errorf("test %q arg test failed:\n\ngot:\n%s\n\nexpected:\n%s\n", tc.name, got, tc.expect)
+		}
+	}
+}
+
+func TestRevHeader(t *testing.T) {
+	var tests = []struct {
+		name   string
+		args   string
+		search string
+		expect string
+	}{
+		{"0-0.ca", "0-0.ca", "", `0-0.ca
+www.0-0.ca
+tennis40-0.ca
+webdisk.tennis40-0.ca
+cpanel.tennis40-0.ca
+webmail.tennis40-0.ca
+tennis40-0.com.tennis40-0.ca
+www.tennis40-0.com.tennis40-0.ca
+cpcalendars.tennis40-0.ca
+cpcontacts.tennis40-0.ca
+tennis40-0.net.tennis40-0.ca
+www.tennis40-0.net.tennis40-0.ca`},
+		{"3-2-1-0.ca", "3-2-1-0.ca", "", "3-2-1-0.ca"},
+		{"3-2-1-0.ca -d '.,'", "3-2-1-0.ca", "-d '.,'", "3-2-1-0.ca"},
+		{"card1000.ca", "card1000.ca", "", "card1000.ca"},
+		{"ed1000.ca", "ed1000.ca", "",
+			`ed1000.ca
+dc-e362ba236494.ed1000.ca
+mail.ed1000.ca
+www.ed1000.ca`},
+		{"ed1000.ca -d ','", "ed1000.ca", "-d ','", "ed1000.ca"},
+		{"fortune1000.ca -d,", "fortune1000.ca", "-d,", "fortune1000.ca"},
+		{"fortune1000.ca", "fortune1000.ca", "",
+			`fortune1000.ca
+webdisk.fortune1000.ca
+cpanel.fortune1000.ca
+mail.fortune1000.ca
+webmail.fortune1000.ca
+www.fortune1000.ca`},
+	}
+
+	infile := filepath.Join("testdata", "ca_rev_hdr.txt")
+
+	for _, tc := range tests {
+		cmd := "./bsearch -r --hdr " + tc.args + " " + tc.search + " " + infile
 
 		output, err := exec.Command("bash", "-c", cmd).CombinedOutput()
 		got := strings.TrimSpace(string(output))
