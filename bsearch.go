@@ -29,6 +29,7 @@ var (
 type Options struct {
 	Blocksize int64                 // data blocksize used for binary search
 	Compare   func(a, b []byte) int // prefix comparison function
+	Header    bool                  // first line of dataset is header and should be ignored
 	MatchLE   bool                  // LinePosition uses less-than-or-equal-to match semantics
 }
 
@@ -39,6 +40,7 @@ type Searcher struct {
 	blocksize int64                 // data blocksize used for binary search
 	buf       []byte                // data buffer (blocksize+1)
 	compare   func(a, b []byte) int // prefix comparison function
+	header    bool                  // first line of dataset is header and should be ignored
 	matchLE   bool                  // LinePosition uses less-than-or-equal-to match semantics
 }
 
@@ -49,6 +51,9 @@ func (s *Searcher) setOptions(options Options) {
 	}
 	if options.Compare != nil {
 		s.compare = options.Compare
+	}
+	if options.Header {
+		s.header = true
 	}
 	if options.MatchLE {
 		s.matchLE = true
@@ -131,7 +136,7 @@ func (s *Searcher) BlockPosition(b []byte) (int64, error) {
 
 		//fmt.Fprintf(os.Stderr, "+ %s: begin %d, end %d, mid %d\n", string(b), begin, end, mid)
 
-		// If mid == begin, check the next block up
+		// If mid == begin and we have more than one block, skip to next
 		if mid == begin && end > mid+s.blocksize {
 			mid = mid + s.blocksize
 		}
@@ -141,6 +146,7 @@ func (s *Searcher) BlockPosition(b []byte) (int64, error) {
 		}
 
 		// Read block at mid (actually read from mid-1 to allow checking for a previous newline)
+		// (we never check the first block, so this should always be safe)
 		bytesread, err := s.r.ReadAt(s.buf, mid-1)
 		if err != nil && err != io.EOF {
 			return -1, err
@@ -226,9 +232,9 @@ BLOCK:
 		}
 		readErr := err
 
-		// Skip till first newline
+		// Skip till first newline (skipping partial lines in non-initial blocks, and/or header in initial)
 		begin := 0
-		if blockPosition > 0 {
+		if blockPosition > 0 || s.header {
 			idx := bytes.IndexByte(s.buf[:bytesread], '\n')
 			if idx == -1 {
 				// If no new newline is found we're either at EOF, or we have a block with no newlines at all(?!)

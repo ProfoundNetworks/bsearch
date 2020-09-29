@@ -1,5 +1,6 @@
 /*
-DB provides a key-value-store-like interface using bsearch.Searcher
+DB provides a key-value-store-like interface using bsearch.Searcher.
+Returns the first entry prefixed with the given key.
 */
 
 package bsearch
@@ -30,7 +31,7 @@ func NewDB(filename, separator string) (*DB, error) {
 	return &DB{bss: bss, sep: []byte(separator)}, nil
 }
 
-// Get returns the value associated with key in db (or ErrNotFound if missing)
+// Get returns the (first) value associated with key in db (or ErrNotFound if missing)
 func (db *DB) Get(key []byte) ([]byte, error) {
 	lookup := append(key, db.sep...)
 
@@ -42,7 +43,7 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 	return line[len(lookup):], nil
 }
 
-// GetString returns the value associated with key in db as a string (or ErrNotFound if missing)
+// GetString returns the (first) value associated with key in db, as a string (or ErrNotFound if missing)
 func (db *DB) GetString(key string) (string, error) {
 	val, err := db.Get([]byte(key))
 	if err != nil {

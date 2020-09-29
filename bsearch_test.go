@@ -77,44 +77,6 @@ func TestBlockPosition2(t *testing.T) {
 	}
 }
 
-// Test BlockPosition() using testdata/rdns3.csv (with header)
-func TestBlockPosition3(t *testing.T) {
-	var tests = []struct {
-		key    string
-		expect int64
-	}{
-		{"000.000.000.000", 0}, // does not exist
-		{"001.000.128.000", 0}, // exists, first line
-		{"001.034.164.000", 0}, // exists
-		{"003.122.206.000", 0}, // does not exist
-		{"003.122.207.000", 0}, // exists, first entry of new block (partial line)
-		{"003.126.183.000", 4096},
-		{"024.066.017.000", 12288}, // exists, first entry of new block, exact block break
-		{"032.176.184.000", 20480}, // exists, entry with dups
-		{"100.000.000.000", 126976},
-		{"200.000.000.000", 221184},
-		{"223.252.003.000", 241664},
-		{"255.255.255.255", 241664}, // does not exist
-		{"ip", 241664},              // does not exist
-	}
-
-	r, l := open(t, "testdata/rdns1.csv")
-
-	s := NewSearcher(r, l)
-	defer s.Close() // noop - test
-
-	for _, tc := range tests {
-		pos, err := s.BlockPosition([]byte(tc.key))
-		if err != nil {
-			t.Fatalf("%s: %s\n", tc.key, err.Error())
-		}
-		if pos != tc.expect {
-			t.Errorf("%q: got %d, expected %d\n", tc.key, pos, tc.expect)
-		}
-	}
-
-}
-
 // Test LinePosition() using testdata/rdns1.csv
 func TestLinePosition1(t *testing.T) {
 	var tests = []struct {
@@ -175,6 +137,79 @@ func TestLine1(t *testing.T) {
 		line, err := s.Line([]byte(tc.key))
 		if err != nil {
 			t.Fatalf("%s: %s\n", tc.key, err.Error())
+		}
+		if string(line) != tc.expect {
+			t.Errorf("%q => %q\n   expected %q\n", tc.key, line, tc.expect)
+		}
+	}
+}
+
+// Test Line() using testdata/domain.csv
+func TestLine2(t *testing.T) {
+	var tests = []struct {
+		key    string
+		expect string
+	}{
+		{"aaa.com", ""},
+		{"accuweather.com", "accuweather.com,567"},
+		{"adweek.com", "adweek.com,305"},
+		{"evernote.com", "evernote.com,739"},
+		{"etracker.com", "etracker.com,477"},
+		{"matterport.com", "matterport.com,683"},
+		{"openfusion.com.au", ""},
+		{"zenfolio.com", "zenfolio.com,416"},
+		{"zzz.com", ""},
+	}
+
+	s, err := NewSearcherFile("testdata/domains1.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close() // required for NewSearcherFile
+
+	for _, tc := range tests {
+		line, err := s.Line([]byte(tc.key))
+		if err != nil {
+			if err != ErrNotFound || tc.expect != "" {
+				t.Fatalf("%s: %s\n", tc.key, err.Error())
+			}
+		}
+		if string(line) != tc.expect {
+			t.Errorf("%q => %q\n   expected %q\n", tc.key, line, tc.expect)
+		}
+	}
+}
+
+// Test Line() using testdata/domain.csv
+func TestLine3(t *testing.T) {
+	var tests = []struct {
+		key    string
+		expect string
+	}{
+		{"aaa.com", ""},
+		{"accuweather.com", "accuweather.com,567"},
+		{"adweek.com", "adweek.com,305"},
+		{"evernote.com", "evernote.com,739"},
+		{"etracker.com", "etracker.com,477"},
+		{"matterport.com", "matterport.com,683"},
+		{"openfusion.com.au", ""},
+		{"zenfolio.com", "zenfolio.com,416"},
+		{"zzz.com", ""},
+	}
+
+	o := Options{Header: true}
+	s, err := NewSearcherFileOptions("testdata/domains2.csv", o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close() // required for NewSearcherFile
+
+	for _, tc := range tests {
+		line, err := s.Line([]byte(tc.key))
+		if err != nil {
+			if err != ErrNotFound || tc.expect != "" {
+				t.Fatalf("%s: %s\n", tc.key, err.Error())
+			}
 		}
 		if string(line) != tc.expect {
 			t.Errorf("%q => %q\n   expected %q\n", tc.key, line, tc.expect)
