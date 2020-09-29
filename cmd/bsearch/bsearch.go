@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/ProfoundNetworks/bsearch"
@@ -52,6 +53,13 @@ func main() {
 
 	// Setup
 	log.SetFlags(0)
+
+	// Die if Filename looks compressed
+	re := regexp.MustCompile(`\.(gz|bz2|zst|br)$`)
+	if re.MatchString(opts.Args.Filename) {
+		fmt.Fprintf(os.Stderr, "Filename %q appears to be compressed - cannot binary search\n", opts.Args.Filename)
+		os.Exit(2)
+	}
 
 	// Instantiate searcher
 	bss, err := bsearch.NewSearcherFile(opts.Args.Filename)
