@@ -50,6 +50,13 @@ Usage
 
 ```
 
+Status
+------
+
+bsearch is alpha software. Interfaces may break and change until an official
+version 1.0.0 is released.
+
+
 Copyright and Licence
 ---------------------
 
