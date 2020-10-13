@@ -2,6 +2,7 @@ package bsearch
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -213,6 +214,184 @@ func TestLine3(t *testing.T) {
 		}
 		if string(line) != tc.expect {
 			t.Errorf("%q => %q\n   expected %q\n", tc.key, line, tc.expect)
+		}
+	}
+}
+
+// Test Lines() using testdata/alstom.csv
+func TestLines(t *testing.T) {
+	var tests = []struct {
+		key    string
+		expect string
+	}{
+		// alstom.com
+		{"alstom.com", `alstom.com,alstom.com,SOA
+alstom.com,alstom.com,ULT
+alstom.com.au,alstom.com,RED
+alstom.com.br,alstom.com,RED
+`},
+		// alstom.com, with delimiter
+		{"alstom.com,", `alstom.com,alstom.com,SOA
+alstom.com,alstom.com,ULT
+`},
+		// alstom.co
+		{"alstom.co", `alstom.co.th,alstom.com,RED
+alstom.com,alstom.com,SOA
+alstom.com,alstom.com,ULT
+alstom.com.au,alstom.com,RED
+alstom.com.br,alstom.com,RED
+`},
+		// alstom.c (includes first line)
+		{"alstom.c", `alstom.ca,alstom.com,RED
+alstom.co.th,alstom.com,RED
+alstom.com,alstom.com,SOA
+alstom.com,alstom.com,ULT
+alstom.com.au,alstom.com,RED
+alstom.com.br,alstom.com,RED
+`},
+	}
+
+	o := Options{Header: false}
+	s, err := NewSearcherFileOptions("testdata/alstom.csv", o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close() // required for NewSearcherFile
+
+	for _, tc := range tests {
+		lines, err := s.Lines([]byte(tc.key))
+		if err != nil {
+			if err != ErrNotFound || tc.expect != "" {
+				t.Fatalf("%s: %s\n", tc.key, err.Error())
+			}
+		}
+		s := []string{}
+		for _, line := range lines {
+			s = append(s, string(line))
+		}
+		linesStr := strings.Join(s, "\n") + "\n"
+		if linesStr != tc.expect {
+			t.Errorf("%q => %q\n   expected %q\n", tc.key, linesStr, tc.expect)
+		}
+	}
+}
+
+// Test Lines() using testdata/alstom2.csv (with header)
+func TestLines2(t *testing.T) {
+	var tests = []struct {
+		key    string
+		expect string
+	}{
+		// alstom.com (includes last line of file)
+		{"alstom.com", `alstom.com,alstom.com,SOA
+alstom.com,alstom.com,ULT
+alstom.com.au,alstom.com,RED
+alstom.com.br,alstom.com,RED
+`},
+		/*
+		   		// alstom.com, with delimiter
+		   		{"alstom.com,", `alstom.com,alstom.com,SOA
+		   alstom.com,alstom.com,ULT
+		   `},
+		   		// alstom.co (includes last line of file)
+		   		{"alstom.co", `alstom.co.th,alstom.com,RED
+		   alstom.com,alstom.com,SOA
+		   alstom.com,alstom.com,ULT
+		   alstom.com.au,alstom.com,RED
+		   alstom.com.br,alstom.com,RED
+		   `},
+		   		// alstom.c (includes first line after header, and last line of file)
+		   		{"alstom.c", `alstom.ca,alstom.com,RED
+		   alstom.co.th,alstom.com,RED
+		   alstom.com,alstom.com,SOA
+		   alstom.com,alstom.com,ULT
+		   alstom.com.au,alstom.com,RED
+		   alstom.com.br,alstom.com,RED
+		   `},
+		*/
+	}
+
+	o := Options{Header: true}
+	s, err := NewSearcherFileOptions("testdata/alstom2.csv", o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close() // required for NewSearcherFile
+
+	for _, tc := range tests {
+		lines, err := s.Lines([]byte(tc.key))
+		if err != nil {
+			if err != ErrNotFound || tc.expect != "" {
+				t.Fatalf("%s: %s\n", tc.key, err.Error())
+			}
+		}
+		s := []string{}
+		for _, line := range lines {
+			s = append(s, string(line))
+		}
+		linesStr := strings.Join(s, "\n") + "\n"
+		if linesStr != tc.expect {
+			t.Errorf("%q => %q\n   expected %q\n", tc.key, linesStr, tc.expect)
+		}
+	}
+}
+
+// Test Lines() using testdata/alstom3.csv (with header, multiple blocks, next block 1)
+func TestLines3(t *testing.T) {
+	var tests = []struct {
+		key        string
+		first_line string
+		last_line  string
+	}{
+		{"alstom.com,", "alstom.com,first", "alstom.com,last"},
+	}
+
+	o := Options{Header: true}
+	s, err := NewSearcherFileOptions("testdata/alstom3.csv", o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close() // required for NewSearcherFile
+
+	for _, tc := range tests {
+		lines, err := s.Lines([]byte(tc.key))
+		if err != nil {
+			if err != ErrNotFound {
+				t.Fatalf("%s: %s\n", tc.key, err.Error())
+			}
+		}
+		if string(lines[0]) != tc.first_line {
+			t.Errorf("%q => first line %q\n   expected %q\n", tc.key, lines[0], tc.first_line)
+		}
+	}
+}
+
+// Test Lines() using testdata/alstom3.csv (with header, multiple blocks, next block 2)
+func TestLines4(t *testing.T) {
+	var tests = []struct {
+		key        string
+		first_line string
+		last_line  string
+	}{
+		{"alstom.com,", "alstom.com,first", "alstom.com,last"},
+	}
+
+	o := Options{Header: true}
+	s, err := NewSearcherFileOptions("testdata/alstom4.csv", o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close() // required for NewSearcherFile
+
+	for _, tc := range tests {
+		lines, err := s.Lines([]byte(tc.key))
+		if err != nil {
+			if err != ErrNotFound {
+				t.Fatalf("%s: %s\n", tc.key, err.Error())
+			}
+		}
+		if string(lines[0]) != tc.first_line {
+			t.Errorf("%q => first line %q\n   expected %q\n", tc.key, lines[0], tc.first_line)
 		}
 	}
 }

@@ -12,6 +12,7 @@ package bsearch
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 )
@@ -317,6 +318,7 @@ func (s *Searcher) Line(b []byte) ([]byte, error) {
 		return []byte{}, err
 	}
 
+	// Find the first newline
 	idx := bytes.IndexByte(s.buf[:bytesread], '\n')
 	if idx == -1 {
 		// No newline found
@@ -331,6 +333,129 @@ func (s *Searcher) Line(b []byte) ([]byte, error) {
 
 	// Newline found at idx
 	return clone(s.buf[:idx]), nil
+}
+
+// Lines returns all lines in the reader that begin with the byte
+// slice b, using a binary search (data must be bytewise-ordered).
+// Returns an empty slice of byte slices and bsearch.ErrNotFound
+// if no matching line is found, and an empty slice of byte slices
+// and the error on any other error.
+func (s *Searcher) Lines(b []byte) ([][]byte, error) {
+	pos, err := s.LinePosition(b)
+	if err != nil {
+		return [][]byte{}, err
+	}
+	//fmt.Fprintf(os.Stderr, "+ LinePosition pos: %d\n", pos)
+
+	var lines [][]byte
+outer:
+	for {
+		// Read data at pos into s.buf to scan
+		bytesread, eof, err := linesReadNextBlock(s.r, s.buf, pos)
+		if err != nil {
+			return [][]byte{}, err
+		}
+
+		// Scan lines
+		from := 0
+		for {
+			// Find the next newline
+			idx := bytes.IndexByte(s.buf[from:bytesread], '\n')
+			if idx == -1 {
+				// No newline found
+				if eof {
+					// EOF w/o newline is okay if we still have a match
+					line, _, err := checkPrefixMatch(s.buf[from:], b)
+					if err != nil {
+						return nil, err
+					}
+					if len(line) > 0 {
+						lines = append(lines, line)
+					}
+					break outer
+				}
+				// Return error if no newline is found in entire block
+				if int64(bytesread) == s.blocksize {
+					return [][]byte{}, ErrLineExceedsBlocksize
+				}
+				// Partial line? Try reading next block from pos+from
+				pos = pos + int64(from)
+				from = 0
+				bytesread, eof, err = linesReadNextBlock(s.r, s.buf, pos)
+				//fmt.Fprintf(os.Stderr, "+ new block 1: pos %d, bytesread %d\n",
+				//	pos, bytesread)
+				if err != nil {
+					return [][]byte{}, err
+				}
+				continue
+			}
+
+			// Newline found at idx - check for prefix match
+			line, brk, err := checkPrefixMatch(s.buf[from:from+idx], b)
+			if err != nil {
+				return nil, err
+			}
+			if brk {
+				break outer
+			}
+			if len(line) > 0 {
+				lines = append(lines, line)
+			}
+
+			from = from + idx + 1
+
+			if from >= bytesread {
+				// If eof flag is set we're done
+				if eof {
+					break outer
+				}
+				// Read next block from pos+from
+				pos = pos + int64(from)
+				from = 0
+
+				bytesread, eof, err = linesReadNextBlock(s.r, s.buf, pos)
+				//fmt.Fprintf(os.Stderr, "+ new block 2: pos %d, bytesread %d\n",
+				//	pos, bytesread)
+				if err != nil {
+					return [][]byte{}, err
+				}
+			}
+		}
+	}
+
+	return lines, nil
+}
+
+// linesReadNextBlock is a helper function to read the next block and
+// distinguish between eof and other errors, to simplify post-processing
+func linesReadNextBlock(r io.ReaderAt, b []byte, pos int64) (bytesread int, eof bool, err error) {
+	bytesread, err = r.ReadAt(b, pos)
+	if err != nil && err == io.EOF {
+		return bytesread, true, nil
+	}
+	if err != nil {
+		return bytesread, false, err
+	}
+	return bytesread, false, nil
+}
+
+// checkPrefixMatch compares the initial sequences of bufa and b
+// (truncated to the length of the shorter).
+// Returns an error if the bufa prefix < b (the underlying data is
+// incorrectly sorted), returns brk=true if bufa prefix > b, and a
+// copy of bufa if bufa prefix == b.
+func checkPrefixMatch(bufa, b []byte) ([]byte, bool, error) {
+	cmp := PrefixCompare(bufa, b)
+	if cmp < 0 {
+		// This should never happen unless the file is wrongly sorted
+		return []byte{}, false,
+			fmt.Errorf("Error: badly sorted file? (%q < expected %q)", bufa, b)
+	} else if cmp > 0 {
+		// End of matching lines - we're done
+		return []byte{}, true, nil
+	}
+
+	return clone(bufa), false, nil
 }
 
 // Reader returns the searcher's underlying reader
