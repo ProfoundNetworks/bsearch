@@ -365,7 +365,7 @@ outer:
 				// No newline found
 				if eof {
 					// EOF w/o newline is okay if we still have a match
-					line, _, err := checkPrefixMatch(s.buf[from:], b)
+					line, _, err := checkPrefixMatch(s.buf[from:bytesread], b)
 					if err != nil {
 						return nil, err
 					}

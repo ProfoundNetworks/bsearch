@@ -288,27 +288,25 @@ alstom.com,alstom.com,ULT
 alstom.com.au,alstom.com,RED
 alstom.com.br,alstom.com,RED
 `},
-		/*
-		   		// alstom.com, with delimiter
-		   		{"alstom.com,", `alstom.com,alstom.com,SOA
-		   alstom.com,alstom.com,ULT
-		   `},
-		   		// alstom.co (includes last line of file)
-		   		{"alstom.co", `alstom.co.th,alstom.com,RED
-		   alstom.com,alstom.com,SOA
-		   alstom.com,alstom.com,ULT
-		   alstom.com.au,alstom.com,RED
-		   alstom.com.br,alstom.com,RED
-		   `},
-		   		// alstom.c (includes first line after header, and last line of file)
-		   		{"alstom.c", `alstom.ca,alstom.com,RED
-		   alstom.co.th,alstom.com,RED
-		   alstom.com,alstom.com,SOA
-		   alstom.com,alstom.com,ULT
-		   alstom.com.au,alstom.com,RED
-		   alstom.com.br,alstom.com,RED
-		   `},
-		*/
+		// alstom.com, with delimiter
+		{"alstom.com,", `alstom.com,alstom.com,SOA
+alstom.com,alstom.com,ULT
+`},
+		// alstom.co (includes last line of file)
+		{"alstom.co", `alstom.co.th,alstom.com,RED
+alstom.com,alstom.com,SOA
+alstom.com,alstom.com,ULT
+alstom.com.au,alstom.com,RED
+alstom.com.br,alstom.com,RED
+`},
+		// alstom.c (includes first line after header, and last line of file)
+		{"alstom.c", `alstom.ca,alstom.com,RED
+alstom.co.th,alstom.com,RED
+alstom.com,alstom.com,SOA
+alstom.com,alstom.com,ULT
+alstom.com.au,alstom.com,RED
+alstom.com.br,alstom.com,RED
+`},
 	}
 
 	o := Options{Header: true}
