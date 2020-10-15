@@ -17,6 +17,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -34,6 +35,7 @@ type Options struct {
 	Blocksize int64                 // data blocksize used for binary search
 	Compare   func(a, b []byte) int // prefix comparison function
 	Header    bool                  // first line of dataset is header and should be ignored
+	Boundary  bool                  // search string must be followed by a word boundary
 	MatchLE   bool                  // LinePosition uses less-than-or-equal-to match semantics
 }
 
@@ -45,7 +47,9 @@ type Searcher struct {
 	buf       []byte                // data buffer (blocksize+1)
 	compare   func(a, b []byte) int // prefix comparison function
 	header    bool                  // first line of dataset is header and should be ignored
+	boundary  bool                  // search string must be followed by a word boundary
 	matchLE   bool                  // LinePosition uses less-than-or-equal-to match semantics
+	reWord    *regexp.Regexp        // regexp used for boundary matching
 }
 
 // setOptions sets the given options on searcher
@@ -58,6 +62,10 @@ func (s *Searcher) setOptions(options Options) {
 	}
 	if options.Header {
 		s.header = true
+	}
+	if options.Boundary {
+		s.boundary = true
+		s.reWord = regexp.MustCompile(`\w`)
 	}
 	if options.MatchLE {
 		s.matchLE = true
@@ -334,7 +342,6 @@ func (s *Searcher) Line(b []byte) ([]byte, error) {
 		}
 	}
 
-	// Newline found at idx
 	return clone(s.buf[:idx]), nil
 }
 
@@ -368,7 +375,8 @@ outer:
 				// No newline found
 				if eof {
 					// EOF w/o newline is okay if we still have a match
-					line, _, err := checkPrefixMatch(s.buf[from:bytesread], b)
+					// We ignore the brk flag here as we're going to break anyway
+					line, _, err := s.checkPrefixMatch(s.buf[from:bytesread], b)
 					if err != nil {
 						return nil, err
 					}
@@ -394,7 +402,7 @@ outer:
 			}
 
 			// Newline found at idx - check for prefix match
-			line, brk, err := checkPrefixMatch(s.buf[from:from+idx], b)
+			line, brk, err := s.checkPrefixMatch(s.buf[from:from+idx], b)
 			if err != nil {
 				return nil, err
 			}
@@ -479,12 +487,12 @@ func (s *Searcher) linesViaScanner(b []byte) ([]string, error) {
 
 }
 
-// checkPrefixMatch compares the initial sequences of bufa and b
-// (truncated to the length of the shorter).
+// checkPrefixMatch checks that the initial sequences of bufa matches b
+// (up to len(b) only).
 // Returns an error if the bufa prefix < b (the underlying data is
 // incorrectly sorted), returns brk=true if bufa prefix > b, and a
 // copy of bufa if bufa prefix == b.
-func checkPrefixMatch(bufa, b []byte) ([]byte, bool, error) {
+func (s *Searcher) checkPrefixMatch(bufa, b []byte) (clonea []byte, brk bool, err error) {
 	cmp := PrefixCompare(bufa, b)
 	if cmp < 0 {
 		// This should never happen unless the file is wrongly sorted
@@ -493,6 +501,18 @@ func checkPrefixMatch(bufa, b []byte) ([]byte, bool, error) {
 	} else if cmp > 0 {
 		// End of matching lines - we're done
 		return []byte{}, true, nil
+	}
+
+	// Prefix matches. If s.Boundary is set we also require a word boundary.
+	if s.boundary && len(bufa) > len(b) {
+		// FIXME: this might need to done rune-wise, rather than byte-wise?
+		blast := bufa[len(b)-1 : len(b)]
+		bnext := bufa[len(b) : len(b)+1]
+		if (s.reWord.Match(blast) && s.reWord.Match(bnext)) ||
+			(!s.reWord.Match(blast) && !s.reWord.Match(bnext)) {
+			// Returning an empty byteslice here will cause this line to be skipped
+			return []byte{}, false, nil
+		}
 	}
 
 	return clone(bufa), false, nil
@@ -510,29 +530,44 @@ func (s *Searcher) Close() {
 	}
 }
 
-// PrefixCompare compares the given byte slices (truncated to the length of the shorter)
+// PrefixCompare compares the initial sequence of bufa matches b
+// (up to len(b) only).
 // Used as the default compare function in NewSearcher.
-func PrefixCompare(a, b []byte) int {
-	switch {
-	case len(a) < len(b):
-		b = b[:len(a)]
-	case len(b) < len(a):
-		a = a[:len(b)]
+func PrefixCompare(bufa, b []byte) int {
+	// If len(bufa) < len(b) we compare up to len(bufa), but disallow equality
+	if len(bufa) < len(b) {
+		cmp := bytes.Compare(bufa, b[:len(bufa)])
+		if cmp == 0 {
+			// An equal match here is short, so actually a less than
+			return -1
+		}
+		return cmp
 	}
-	return bytes.Compare(a, b)
+
+	return bytes.Compare(bufa[:len(b)], b)
 }
 
-// PrefixCompareString compares the given byte slices (truncated to the length of the shorter)
-// after conversion to strings. Can be used as the compare function via NewSearcherOptions.
-func PrefixCompareString(a, b []byte) int {
-	switch {
-	case len(a) < len(b):
-		b = b[:len(a)]
-	case len(b) < len(a):
-		a = a[:len(b)]
-	}
-	sa := string(a)
+// PrefixCompareString compares the initial bytes of bufa matches b
+// (up to len(b) only), after conversion to strings.
+// Can be used as the compare function via NewSearcherOptions.
+func PrefixCompareString(bufa, b []byte) int {
+	sa := string(bufa)
 	sb := string(b)
+
+	// If len(sa) < len(sb) we compare up to len(sa), but disallow equality
+	if len(sa) < len(sb) {
+		sb = sb[:len(sa)]
+		switch {
+		case sa < sb:
+			return -1
+		case sa == sb:
+			// An equal match here is short, so actually a less than
+			return -1
+		}
+		return 1
+	}
+
+	sa = sa[:len(sb)]
 	switch {
 	case sa < sb:
 		return -1

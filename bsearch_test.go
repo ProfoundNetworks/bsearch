@@ -336,7 +336,7 @@ alstom.com.br,alstom.com,RED
 }
 
 // Test Lines() using testdata/alstom3.csv (with header, multiple blocks, next block 1)
-func TestLines3(t *testing.T) {
+func TestLinesMultiBlock1(t *testing.T) {
 	var tests = []struct {
 		key        string
 		first_line string
@@ -366,7 +366,7 @@ func TestLines3(t *testing.T) {
 }
 
 // Test Lines() using testdata/alstom3.csv (with header, multiple blocks, next block 2)
-func TestLines4(t *testing.T) {
+func TestLinesMultiBlock2(t *testing.T) {
 	var tests = []struct {
 		key        string
 		first_line string
@@ -391,6 +391,97 @@ func TestLines4(t *testing.T) {
 		}
 		if string(lines[0]) != tc.first_line {
 			t.Errorf("%q => first line %q\n   expected %q\n", tc.key, lines[0], tc.first_line)
+		}
+	}
+}
+
+// Test Lines() with Options.Boundary set (on alstom2.csv)
+func TestLinesBoundary(t *testing.T) {
+	var tests = []struct {
+		key    string
+		expect string
+	}{
+		// alstom.com (includes last line of file)
+		{"alstom.com", `alstom.com,alstom.com,SOA
+alstom.com,alstom.com,ULT
+alstom.com.au,alstom.com,RED
+alstom.com.br,alstom.com,RED
+`},
+		// alstom.co with boundary returns only one line
+		{"alstom.co", `alstom.co.th,alstom.com,RED
+`},
+		// alstom.c with boundary returns nothing
+		{"alstom.c", ""},
+	}
+
+	o := Options{Header: true, Boundary: true}
+	s, err := NewSearcherFileOptions("testdata/alstom2.csv", o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close() // required for NewSearcherFile
+
+	for _, tc := range tests {
+		lines, err := s.Lines([]byte(tc.key))
+		if err != nil {
+			if err != ErrNotFound || tc.expect != "" {
+				t.Fatalf("%s: %s\n", tc.key, err.Error())
+			}
+		}
+		var linesStr string
+		if len(lines) > 0 {
+			s := []string{}
+			for _, line := range lines {
+				s = append(s, string(line))
+			}
+			linesStr = strings.Join(s, "\n") + "\n"
+		}
+		if linesStr != tc.expect {
+			t.Errorf("%q => %q\n   expected %q\n", tc.key, linesStr, tc.expect)
+		}
+	}
+}
+
+// Test Lines() with Options.Boundary set (on ca_rev.txt)
+func TestLinesBoundary2(t *testing.T) {
+	var tests = []struct {
+		key    string
+		expect string
+	}{
+		{"ac.101gnitekrametailiffa", `ac.101gnitekrametailiffa
+ac.101gnitekrametailiffa.ksidbew
+ac.101gnitekrametailiffa.lenapc
+ac.101gnitekrametailiffa.liambew
+ac.101gnitekrametailiffa.revocsidotua
+ac.101gnitekrametailiffa.sradnelacpc
+ac.101gnitekrametailiffa.stcatnocpc
+`},
+	}
+
+	o := Options{Header: true, Boundary: true}
+	s, err := NewSearcherFileOptions("testdata/ca_rev.txt", o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close() // required for NewSearcherFile
+
+	for _, tc := range tests {
+		lines, err := s.Lines([]byte(tc.key))
+		if err != nil {
+			if err != ErrNotFound || tc.expect != "" {
+				t.Fatalf("%s: %s\n", tc.key, err.Error())
+			}
+		}
+		var linesStr string
+		if len(lines) > 0 {
+			s := []string{}
+			for _, line := range lines {
+				s = append(s, string(line))
+			}
+			linesStr = strings.Join(s, "\n") + "\n"
+		}
+		if linesStr != tc.expect {
+			t.Errorf("%q => %q\n   expected %q\n", tc.key, linesStr, tc.expect)
 		}
 	}
 }
