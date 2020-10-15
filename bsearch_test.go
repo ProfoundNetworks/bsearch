@@ -1,6 +1,7 @@
 package bsearch
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -449,4 +450,40 @@ func open(t *testing.T, filename string) (fh *os.File, length int64) {
 	}
 
 	return fh, fileinfo.Size()
+}
+
+// Benchmark Lines()
+func BenchmarkLines(b *testing.B) {
+	bss, err := NewSearcherFile("testdata/rdns1.csv")
+	if err != nil {
+		b.Fatal(err)
+	}
+	prefix := []byte("162.")
+	for i := 0; i < b.N; i++ {
+		lines, err := bss.Lines(prefix)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if len(lines) != 12 {
+			b.Fatal(fmt.Errorf("Lines returned %d results, expected 12\n", len(lines)))
+		}
+	}
+}
+
+// Benchmark LinesViaScanner()
+func BenchmarkLinesViaScanner(b *testing.B) {
+	bss, err := NewSearcherFile("testdata/rdns1.csv")
+	if err != nil {
+		b.Fatal(err)
+	}
+	prefix := []byte("162.")
+	for i := 0; i < b.N; i++ {
+		lines, err := bss.linesViaScanner(prefix)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if len(lines) != 12 {
+			b.Fatal(fmt.Errorf("Lines returned %d results, expected 12\n", len(lines)))
+		}
+	}
 }

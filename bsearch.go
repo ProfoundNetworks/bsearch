@@ -10,11 +10,14 @@ TODO: should we check for/warn on non-ordered data?
 package bsearch
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
+	"strings"
 )
 
 const (
@@ -437,6 +440,43 @@ func linesReadNextBlock(r io.ReaderAt, b []byte, pos int64) (bytesread int, eof 
 		return bytesread, false, err
 	}
 	return bytesread, false, nil
+}
+
+// linesViaScanner is an alternative implementation of Lines(),
+// to check that Lines() is not slower than using a bufio.Scanner
+func (s *Searcher) linesViaScanner(b []byte) ([]string, error) {
+	pos, err := s.LinePosition(b)
+	if err != nil {
+		return []string{}, err
+	}
+	//fmt.Fprintf(os.Stderr, "+ LinePosition pos: %d\n", pos)
+
+	reader := s.Reader()
+	p, err := reader.(io.ReadSeeker).Seek(pos, io.SeekStart)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if p != pos {
+		log.Fatalf("seek returned unexpected position: %d != expected %d\n", p, pos)
+	}
+
+	// Scan all lines that match
+	scanner := bufio.NewScanner(reader.(io.Reader))
+	searchStr := string(b)
+	results := []string{}
+	for scanner.Scan() {
+		line := scanner.Text()
+		//vprintf("+ line: %s\n", line)
+		if strings.HasPrefix(line, searchStr) {
+			results = append(results, line)
+		} else if line > searchStr {
+			// If line > searchStr we're done
+			break
+		}
+	}
+
+	return results, nil
+
 }
 
 // checkPrefixMatch compares the initial sequences of bufa and b
