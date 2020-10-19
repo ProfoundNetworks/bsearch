@@ -81,22 +81,19 @@ cpcontacts.tennis40-0.ca
 tennis40-0.net.tennis40-0.ca
 www.tennis40-0.net.tennis40-0.ca`},
 		{"3-2-1-0.ca", "3-2-1-0.ca", "", "3-2-1-0.ca"},
-		{"3-2-1-0.ca -d '.,'", "3-2-1-0.ca", "-d '.,'", "3-2-1-0.ca"},
+		{"3-2-1-0.ca -b", "3-2-1-0.ca", "-b", "3-2-1-0.ca"},
 		{"card1000.ca", "card1000.ca", "", "card1000.ca"},
 		{"ed1000.ca", "ed1000.ca", "",
 			`ed1000.ca
 dc-e362ba236494.ed1000.ca
 mail.ed1000.ca
+www.ed1000.ca
+www.fooed1000.ca`},
+		{"ed1000.ca -b", "ed1000.ca", "-b",
+			`ed1000.ca
+dc-e362ba236494.ed1000.ca
+mail.ed1000.ca
 www.ed1000.ca`},
-		{"ed1000.ca -d ','", "ed1000.ca", "-d ','", "ed1000.ca"},
-		{"fortune1000.ca -d,", "fortune1000.ca", "-d,", "fortune1000.ca"},
-		{"fortune1000.ca", "fortune1000.ca", "",
-			`fortune1000.ca
-webdisk.fortune1000.ca
-cpanel.fortune1000.ca
-mail.fortune1000.ca
-webmail.fortune1000.ca
-www.fortune1000.ca`},
 	}
 
 	infile := filepath.Join("testdata", "ca_rev.txt")
@@ -136,22 +133,19 @@ cpcontacts.tennis40-0.ca
 tennis40-0.net.tennis40-0.ca
 www.tennis40-0.net.tennis40-0.ca`},
 		{"3-2-1-0.ca", "3-2-1-0.ca", "", "3-2-1-0.ca"},
-		{"3-2-1-0.ca -d '.,'", "3-2-1-0.ca", "-d '.,'", "3-2-1-0.ca"},
+		{"3-2-1-0.ca -b", "3-2-1-0.ca", "-b", "3-2-1-0.ca"},
 		{"card1000.ca", "card1000.ca", "", "card1000.ca"},
 		{"ed1000.ca", "ed1000.ca", "",
 			`ed1000.ca
 dc-e362ba236494.ed1000.ca
 mail.ed1000.ca
+www.ed1000.ca
+www.fooed1000.ca`},
+		{"ed1000.ca -b", "ed1000.ca", "-b",
+			`ed1000.ca
+dc-e362ba236494.ed1000.ca
+mail.ed1000.ca
 www.ed1000.ca`},
-		{"ed1000.ca -d ','", "ed1000.ca", "-d ','", "ed1000.ca"},
-		{"fortune1000.ca -d,", "fortune1000.ca", "-d,", "fortune1000.ca"},
-		{"fortune1000.ca", "fortune1000.ca", "",
-			`fortune1000.ca
-webdisk.fortune1000.ca
-cpanel.fortune1000.ca
-mail.fortune1000.ca
-webmail.fortune1000.ca
-www.fortune1000.ca`},
 	}
 
 	infile := filepath.Join("testdata", "ca_rev_hdr.txt")
