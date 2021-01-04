@@ -6,6 +6,8 @@
 /TODO
 /c.out
 /cmd/bsearch/bsearch
+/cmd/bsearch_selftest/bsearch_selftest
+/cmd/bsearch_selftest/testdata/ipv4.csv
 /data/*
 /delta/applied/*
 /dist/*

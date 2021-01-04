@@ -1,0 +1,10 @@
+
+desc "Run bsearch_selftest on testdata/ipv4_10k.csv"
+task :default do
+  sh "go build && ./bsearch_selftest -c0 testdata/ipv4_10k.csv"
+end
+
+desc "Run bsearch_selftest on testdata/ipv4_100k.csv"
+task "100k" do
+  sh "go build && ./bsearch_selftest -c0 testdata/ipv4_100k.csv"
+end
