@@ -19,11 +19,12 @@ import (
 
 // Options
 var opts struct {
-	Verbose bool   `short:"v" long:"verbose" description:"display verbose debug output"`
-	Sep     string `short:"t" long:"sep" description:"separator" default:","`
-	Count   int    `short:"c" long:"count" description:"number of checks to run" default:"100"`
-	Header  bool   `short:"H" long:"hdr" description:"ignore first line (header) in Filename when doing lookups"`
-	Args    struct {
+	Verbose  bool   `short:"v" long:"verbose" description:"display verbose debug output"`
+	Sep      string `short:"t" long:"sep" description:"separator" default:","`
+	Count    int    `short:"c" long:"count" description:"number of checks to run" default:"100"`
+	Header   bool   `short:"H" long:"hdr" description:"ignore first line (header) in Filename when doing lookups"`
+	BufferSz int    `short:"s" long:"bs" description:"buffer size to allocate (max line size), in MB" default:"1"`
+	Args     struct {
 		Filename string
 	} `positional-args:"yes" required:"yes"`
 }
@@ -114,6 +115,10 @@ func loadCSVMap(filename, sep string, header bool) map[string]string {
 		log.Fatal(err)
 	}
 	scanner := bufio.NewScanner(fh)
+	// Allocate scanner buffer manually to allow for lines > 64kB
+	maxlen := opts.BufferSz * 1024 * 1024 // BufferSz MB
+	buf := make([]byte, maxlen)
+	scanner.Buffer(buf, maxlen)
 	i := 0
 	for scanner.Scan() {
 		line := scanner.Text()
