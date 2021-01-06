@@ -362,6 +362,9 @@ func TestLinesMultiBlock1(t *testing.T) {
 		if string(lines[0]) != tc.first_line {
 			t.Errorf("%q => first line %q\n   expected %q\n", tc.key, lines[0], tc.first_line)
 		}
+		if string(lines[len(lines)-1]) != tc.last_line {
+			t.Errorf("%q => last line %q\n   expected %q\n", tc.key, lines[len(lines)-1], tc.last_line)
+		}
 	}
 }
 
@@ -391,6 +394,9 @@ func TestLinesMultiBlock2(t *testing.T) {
 		}
 		if string(lines[0]) != tc.first_line {
 			t.Errorf("%q => first line %q\n   expected %q\n", tc.key, lines[0], tc.first_line)
+		}
+		if string(lines[len(lines)-1]) != tc.last_line {
+			t.Errorf("%q => last line %q\n   expected %q\n", tc.key, lines[len(lines)-1], tc.last_line)
 		}
 	}
 }
