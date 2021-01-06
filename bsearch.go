@@ -256,9 +256,9 @@ func (s *Searcher) LinePosition(b []byte) (int64, error) {
 		blockPosition--
 	}
 
-	// Loop in case we need to read more than one block
 	var trailingPosition int64 = -1
-BLOCK:
+	// Loop in case we need to read more than one block
+outer:
 	for {
 		// Read next block
 		bytesread, err := s.r.ReadAt(s.buf, blockPosition)
@@ -267,63 +267,76 @@ BLOCK:
 		}
 		readErr := err
 
-		// Skip till first newline (skipping partial lines in non-initial blocks, and/or header in initial)
+		// Skip till first newline (skipping header in initial block,
+		// and partial lines in subsequent ones)
 		begin := 0
 		if blockPosition > 0 || s.header {
 			idx := bytes.IndexByte(s.buf[:bytesread], '\n')
 			if idx == -1 {
-				// If no new newline is found we're either at EOF, or we have a block with no newlines at all(?!)
-				if err != nil && err == io.EOF {
+				// If no new newline is found and we're at EOF, we're done
+				if readErr != nil && (readErr == io.EOF || bytesread < len(s.buf)) {
 					break
-				} else {
-					// Corner case - no newlines in non-eof block(?) - increment blockPosition and retry
-					blockPosition += s.blocksize
-					continue
 				}
+				// If no newline is found, increment blockPosition and retry
+				//trailingPosition = blockPosition
+				blockPosition += s.blocksize
+				continue
 			}
 
+			// Newline found - set begin to next position
 			begin = idx + 1
+
+			// Check we aren't out of data - if we are, re-read from current newline
+			if begin+len(b) > bytesread {
+				if readErr == io.EOF {
+					break outer
+				}
+				//fmt.Fprintf(os.Stderr, "+ out-of-data re-read - tp=%d, bp=%d, begin=%d, limit=%d, bytesread=%d, bp => %d\n", trailingPosition, blockPosition, begin, begin+len(b), bytesread, blockPosition+int64(begin)-1)
+				//trailingPosition = blockPosition
+				blockPosition += int64(begin) - 1
+				continue outer
+			}
 		}
 
 		// Scan lines from begin until we find one >= b
 		for {
-			// Compare buf from begin vs. b
+			// Compare buf from begin to b
 			cmp := s.compare(s.buf[begin:begin+len(b)], b)
-			//fmt.Fprintf(os.Stderr, "+ comparing %q (begin %d) vs. %q == %d\n",
-			//	string(s.buf[begin:begin+len(b)]), begin, string(b), cmp)
+			//fmt.Fprintf(os.Stderr, "+ comparing %q (begin %d) vs. %q == %d\n", string(s.buf[begin:begin+len(b)]), begin, string(b), cmp)
 			if cmp == 0 {
 				return blockPosition + int64(begin), nil
 			} else if cmp == 1 {
-				break BLOCK
+				break outer
 			}
 
 			// Current line < b; find next newline
 			idx := bytes.IndexByte(s.buf[begin:bytesread], '\n')
 			if idx == -1 {
-				if readErr == io.EOF {
-					break BLOCK
+				// If no new newline is found and we're at EOF, we're done
+				if readErr != nil && readErr == io.EOF {
+					break outer
 				}
-				// No newline found - re-read from current position
+				// No newline found and we're not at EOF - re-read from current position
+				//fmt.Fprintf(os.Stderr, "+ no newline re-read - tp=%d, bp=%d, begin=%d, bp => %d\n", trailingPosition, blockPosition, begin, blockPosition+int64(begin)-1)
 				trailingPosition = blockPosition + int64(begin)
-				blockPosition = blockPosition + int64(begin) - 1
-				//fmt.Fprintf(os.Stderr, "+ no newline re-read - begin=%d, blockPosition => %d\n",
-				//	begin, blockPosition)
-				continue BLOCK
+				blockPosition += int64(begin)
+				continue outer
 			}
 
+			// Newline found - update begin
 			trailingPosition = blockPosition + int64(begin)
 			begin += idx + 1
 
 			// Out of data - re-read from current newline
 			if begin+len(b) > bytesread {
 				if readErr == io.EOF {
-					break BLOCK
+					break outer
 				}
-				//fmt.Fprintf(os.Stderr,
-				//	"+ out-of-data re-read - tp=%d, bp=%d, begin=%d, limit=%d, bytesread=%d, bp => %d\n",
-				//	trailingPosition, blockPosition, begin, begin+len(b), bytesread, blockPosition+int64(begin)-1)
-				blockPosition = blockPosition + int64(begin) - 1
-				continue BLOCK
+				//trailingPosition = blockPosition
+				blockPosition += int64(begin) - 1
+				begin = 0
+				//fmt.Fprintf(os.Stderr, "+ out-of-data re-read - tp=%d, bp=%d, begin=%d, limit=%d, bytesread=%d, bp => %d\n", trailingPosition, blockPosition, begin, begin+len(b), bytesread, blockPosition+int64(begin)-1)
+				continue outer
 			}
 		}
 	}
