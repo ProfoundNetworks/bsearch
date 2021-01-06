@@ -127,7 +127,7 @@ func NewSearcherFileOptions(filename string, options Options) (*Searcher, error)
 
 // BlockPosition does a block-based binary search on its underlying reader,
 // comparing only the first line of each block. It returns the byte offset
-// of last block whose first line begins with a byte sequence less than b
+// of the last block whose first line begins with a byte sequence less than b
 // (using a bytewise comparison). The underlying data must therefore be
 // bytewise-sorted (e.g. using a sort with `LC_COLLATE=C` set).
 //
@@ -140,6 +140,10 @@ func (s *Searcher) BlockPosition(b []byte) (int64, error) {
 	var begin, mid, end int64
 	begin = 0
 	end = s.l
+
+	if int64(len(b)) > s.blocksize {
+		return -1, ErrLineExceedsBlocksize
+	}
 
 	for end-begin > 0 {
 		// Read data from the midpoint between begin and end (truncated to a multiple of blocksize)
@@ -157,46 +161,30 @@ func (s *Searcher) BlockPosition(b []byte) (int64, error) {
 			break
 		}
 
-		// Read block at mid (actually read from mid-1 to allow checking for a previous newline)
-		// (we never check the first block, so this should always be safe)
-		bytesread, err := s.r.ReadAt(s.buf, mid-1)
+		var cmpBegin, bytesread int
+		var err error
+		mid, bytesread, cmpBegin, err = s.findFirstLinePosFrom(mid, end)
 		if err != nil && err != io.EOF {
 			return -1, err
 		}
-
-		// If the first byte read is not a newline, we are in the middle of a line - skip to first '\n'
-		cmpBegin := 1
-		if s.buf[0] != '\n' {
-			if idx := bytes.IndexByte(s.buf[1:bytesread], '\n'); idx == -1 {
-				// If new newline is found we're either at EOF, or we have a block with no newlines at all(?!)
-				if err != nil && err == io.EOF {
-					break
-				} else {
-					// Corner case - no newlines in non-final block - just bump mid and continue?
-					if end > mid+s.blocksize {
-						mid = mid + s.blocksize
-						continue
-					} else {
-						break
-					}
-				}
-			} else {
-				cmpBegin += idx + 1
-			}
-		} else {
-			// fmt.Fprintf(os.Stderr, "+ %s: block break == line break condition!\n", string(b))
+		if mid == -1 {
+			break
 		}
 
 		// Compare line data vs. b
 		cmpEnd := cmpBegin + len(b)
 		if cmpEnd > bytesread {
-			// Corner case: very long lines or keys - we don't have enough in buf to do a full key comparison
-			// For now just fail - not sure trying to fix/handle this case is worth it
-			return 0, ErrLineExceedsBlocksize
+			// Corner case: not enough data left in block to read the full key
+			bytesread, err = s.r.ReadAt(s.buf, mid+int64(cmpBegin)-1)
+			if err != nil && err != io.EOF {
+				return -1, err
+			}
+			cmpBegin = 0
+			cmpEnd = len(b)
 		}
 
-		//fmt.Fprintf(os.Stderr, "+ %s: comparing vs. %q\n", string(b), string(s.buf[cmpBegin:cmpEnd]))
 		cmp := s.compare(s.buf[cmpBegin:cmpEnd], b)
+		//fmt.Fprintf(os.Stderr, "+ %s: comparing vs. %q, cmp %d\n", string(b), string(s.buf[cmpBegin:cmpEnd]), cmp)
 
 		// Check line against searchStr
 		if cmp == -1 {
@@ -209,12 +197,47 @@ func (s *Searcher) BlockPosition(b []byte) (int64, error) {
 	return begin, nil
 }
 
+// findFirstLinePosFrom returns the position in s.buf between begin-1 and end
+// immediately after the first newline.
+func (s *Searcher) findFirstLinePosFrom(begin, end int64) (newBegin int64, bytesread, bufPos int, err error) {
+	// Read block from begin-1 (to allow checking for a previous newline)
+	var readBegin int64 = 0
+	if begin > 0 {
+		readBegin = begin - 1
+	}
+	bytesread, err = s.r.ReadAt(s.buf, readBegin)
+	if err != nil && err != io.EOF {
+		return -1, bytesread, -1, err
+	}
+
+	bufPos = 1
+	if s.buf[0] == '\n' {
+		return begin, bytesread, bufPos, nil
+	}
+
+	// If the first byte read is not a newline, we are in the middle of a line -
+	// skip to first '\n'
+	if idx := bytes.IndexByte(s.buf[1:bytesread], '\n'); idx == -1 {
+		// If no newline is found and there are no more blocks, we're done
+		if begin+s.blocksize >= end {
+			return -1, bytesread, -1, nil
+		}
+		// If no newline is found, rerun on next block
+		return s.findFirstLinePosFrom(begin+s.blocksize, end)
+	} else {
+		bufPos += idx + 1
+	}
+
+	return begin, bytesread, bufPos, nil
+}
+
 // LinePosition returns the byte offset in the reader for the first line
-// that begins with the byte slice b, using a binary search (data must be
-// bytewise-ordered).
+// that begins with the byte slice b, using a binary search via BlockPosition()
+// (data must be bytewise-ordered).
 //
 // If no line with prefix b is found, LinePosition returns -1 and
 // bsearch.ErrNotFound if OptionsMatchLE is false (the default).
+//
 // If no line with prefix b is found and Options.MatchLE is true,
 // LinePosition returns the byte offset of the line immediately before
 // where a matching line should be i.e. the last line with a prefix less
