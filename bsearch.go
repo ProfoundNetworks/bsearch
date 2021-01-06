@@ -350,7 +350,8 @@ outer:
 }
 
 // Line returns the first line in the reader that begins with the byte
-// slice b, using a binary search (data must be bytewise-ordered).
+// slice b, using a binary search via LinePosition (data must be
+// bytewise-ordered).
 // Returns an empty byte slice and bsearch.ErrNotFound if no matching line
 // is found, and an empty byte slice and the error on any other error.
 func (s *Searcher) Line(b []byte) ([]byte, error) {
@@ -359,26 +360,33 @@ func (s *Searcher) Line(b []byte) ([]byte, error) {
 		return []byte{}, err
 	}
 
-	// Reread data at pos, to make sure we can read a full line
+	return s.firstLineFrom(pos)
+}
+
+func (s *Searcher) firstLineFrom(pos int64) ([]byte, error) {
 	bytesread, err := s.r.ReadAt(s.buf, pos)
 	if err != nil && err != io.EOF {
 		return []byte{}, err
 	}
 
 	// Find the first newline
-	idx := bytes.IndexByte(s.buf[:bytesread], '\n')
-	if idx == -1 {
-		// No newline found
-		if err != nil && err == io.EOF {
-			// EOF w/o newline is okay - return current buffer
-			return clone(s.buf[:bytesread]), nil
-		} else if int64(bytesread) == s.blocksize {
-			// No newline found in entire block
-			return []byte{}, ErrLineExceedsBlocksize
-		}
+	if idx := bytes.IndexByte(s.buf[:bytesread], '\n'); idx > -1 {
+		return clone(s.buf[:idx]), nil
 	}
 
-	return clone(s.buf[:idx]), nil
+	// No newline found w/EOF is okay - return current buffer
+	if err != nil && err == io.EOF {
+		return clone(s.buf[:bytesread]), nil
+	}
+
+	// No newline found in entire block - call on next block and concatenate
+	current := clone(s.buf[:bytesread])
+	rest, err := s.firstLineFrom(pos + int64(bytesread))
+	if err != nil && err != io.EOF {
+		return []byte{}, err
+	}
+
+	return append(current, rest...), nil
 }
 
 // Lines returns all lines in the reader that begin with the byte
@@ -391,7 +399,7 @@ func (s *Searcher) Lines(b []byte) ([][]byte, error) {
 	if err != nil {
 		return [][]byte{}, err
 	}
-	//fmt.Fprintf(os.Stderr, "+ LinePosition pos: %d\n", pos)
+	//fmt.Fprintf(os.Stderr, "+ LinePosition returned: %d\n", pos)
 
 	var lines [][]byte
 outer:
@@ -420,10 +428,6 @@ outer:
 						lines = append(lines, line)
 					}
 					break outer
-				}
-				// Return error if no newline is found in entire block
-				if int64(bytesread) == s.blocksize {
-					return [][]byte{}, ErrLineExceedsBlocksize
 				}
 				// Partial line? Try reading next block from pos+from
 				pos = pos + int64(from)
