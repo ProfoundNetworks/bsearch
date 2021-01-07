@@ -45,6 +45,7 @@ type Searcher struct {
 	l         int64                 // data length
 	blocksize int64                 // data blocksize used for binary search
 	buf       []byte                // data buffer (blocksize+1)
+	idx       *Index                // optional block index
 	compare   func(a, b []byte) int // prefix comparison function
 	header    bool                  // first line of dataset is header and should be ignored
 	boundary  bool                  // search string must be followed by a word boundary
@@ -112,6 +113,11 @@ func NewSearcherFile(filename string) (*Searcher, error) {
 
 	s := Searcher{r: fh, l: filesize, blocksize: defaultBlocksize, compare: PrefixCompare}
 	s.buf = make([]byte, s.blocksize+1) // we read blocksize+1 bytes to check for a preceding newline
+
+	if idx, err := NewIndexLoad(filename); err == nil {
+		s.idx = idx
+	}
+
 	return &s, nil
 }
 
@@ -145,6 +151,10 @@ func (s *Searcher) BlockPosition(b []byte) (int64, error) {
 
 	if int64(len(b)) > s.blocksize {
 		return -1, ErrLineExceedsBlocksize
+	}
+
+	if s.idx != nil {
+		return s.idx.BlockPosition(b)
 	}
 
 	for end-begin > 0 {

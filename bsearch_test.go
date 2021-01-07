@@ -26,7 +26,8 @@ func TestBlockPosition1(t *testing.T) {
 		{"032.176.184.000", 20480}, // exists, entry with dups
 		{"100.000.000.000", 126976},
 		{"200.000.000.000", 221184},
-		{"223.252.003.000", 241664},
+		{"221.094.141.000", 237568}, // exists, first entry of last block
+		{"223.252.003.000", 241664}, // exists, last block
 		{"255.255.255.255", 241664}, // does not exist
 	}
 
@@ -70,6 +71,48 @@ func TestBlockPosition2(t *testing.T) {
 	o := Options{Blocksize: 8192, Compare: PrefixCompareString}
 	s := NewSearcherOptions(r, l, o)
 	defer s.Close() // noop - test
+
+	for _, tc := range tests {
+		pos, err := s.BlockPosition([]byte(tc.key))
+		if err != nil {
+			t.Fatalf("%s: %s\n", tc.key, err.Error())
+		}
+		if pos != tc.expect {
+			t.Errorf("%q: got %d, expected %d\n", tc.key, pos, tc.expect)
+		}
+	}
+}
+
+// Test BlockPosition() using testdata/rdns1i.csv (with an index)
+// (the offsets here are blockposition first-line positions, due to the index)
+func TestBlockPosition3(t *testing.T) {
+	var tests = []struct {
+		key    string
+		expect int64
+	}{
+		{"000.000.000.000", 0},     // does not exist
+		{"000.000.127.000", 0},     // does not exist
+		{"001.000.128.000", 0},     // exists, first line
+		{"001.034.164.000", 0},     // exists
+		{"003.122.206.000", 0},     // does not exist
+		{"003.114.231.000", 0},     // exists, last entry of first block
+		{"003.122.206.000", 0},     // does not exist
+		{"003.122.207.000", 0},     // exists, first entry of new block (partial line)
+		{"003.126.183.000", 4123},  // exists, second entry of new block
+		{"024.066.017.000", 12317}, // exists, first entry of new block, exact block break
+		{"032.176.184.000", 20505}, // exists, entry with dups
+		{"100.000.000.000", 127050},
+		{"200.000.000.000", 221225},
+		{"221.094.141.000", 237593}, // exists, first entry of last block
+		{"223.252.003.000", 241678}, // exists, last block
+		{"255.255.255.255", 241678}, // does not exist
+	}
+
+	s, err := NewSearcherFile("testdata/rdns1i.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close() // required for NewSearcherFile
 
 	for _, tc := range tests {
 		pos, err := s.BlockPosition([]byte(tc.key))
@@ -215,6 +258,38 @@ func TestLine3(t *testing.T) {
 			if err != ErrNotFound || tc.expect != "" {
 				t.Fatalf("%s: %s\n", tc.key, err.Error())
 			}
+		}
+		if string(line) != tc.expect {
+			t.Errorf("%q => %q\n   expected %q\n", tc.key, line, tc.expect)
+		}
+	}
+}
+
+// Test Line() using testdata/rdns1i.csv, existing keys, with an index
+func TestLine4(t *testing.T) {
+	var tests = []struct {
+		key    string
+		expect string
+	}{
+		{"001.000.128.000", "001.000.128.000,node-0.pool-1-0.dynamic.totinternet.net,202003,totinternet.net"},
+		{"001.034.164.000", "001.034.164.000,1-34-164-0.HINET-IP.hinet.net,202003,hinet.net"},
+		{"003.122.207.000", "003.122.207.000,ec2-3-122-207-0.eu-central-1.compute.amazonaws.com,202003,amazonaws.com"},
+		{"003.126.183.000", "003.126.183.000,ec2-3-126-183-0.eu-central-1.compute.amazonaws.com,202003,amazonaws.com"},
+		{"024.066.017.000", "024.066.017.000,S0106905851b9f0e0.rd.shawcable.net,202003,shawcable.net"},
+		{"032.176.184.000", "032.176.184.000,mobile000.mycingular.net,202003,mycingular.net"},
+		{"223.252.003.000", "223.252.003.000,223-252-3-0.as45671.net,202003,as45671.net"},
+	}
+
+	s, err := NewSearcherFile("testdata/rdns1i.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close() // required for NewSearcherFile
+
+	for _, tc := range tests {
+		line, err := s.Line([]byte(tc.key))
+		if err != nil {
+			t.Fatalf("%s: %s\n", tc.key, err.Error())
 		}
 		if string(line) != tc.expect {
 			t.Errorf("%q => %q\n   expected %q\n", tc.key, line, tc.expect)
