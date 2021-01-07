@@ -1,6 +1,7 @@
 delim: ','
 epoch: 1610020108
 filename: rdns1i.csv
+filedir: /home/gavin/work/profound/bsearch/testdata
 header: false
 list:
     - k: 001.000.128.000
