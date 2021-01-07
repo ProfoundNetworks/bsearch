@@ -13,12 +13,15 @@ func TestBlockPosition1(t *testing.T) {
 		key    string
 		expect int64
 	}{
-		{"000.000.000.000", 0}, // does not exist
-		{"001.000.128.000", 0}, // exists, first line
-		{"001.034.164.000", 0}, // exists
-		{"003.122.206.000", 0}, // does not exist
-		{"003.122.207.000", 0}, // exists, first entry of new block (partial line)
-		{"003.126.183.000", 4096},
+		{"000.000.000.000", 0},     // does not exist
+		{"000.000.127.000", 0},     // does not exist
+		{"001.000.128.000", 0},     // exists, first line
+		{"001.034.164.000", 0},     // exists
+		{"003.122.206.000", 0},     // does not exist
+		{"003.114.231.000", 0},     // exists, last entry of first block
+		{"003.122.206.000", 0},     // does not exist
+		{"003.122.207.000", 0},     // exists, first entry of new block (partial line)
+		{"003.126.183.000", 4096},  // exists, second entry of new block
 		{"024.066.017.000", 12288}, // exists, first entry of new block, exact block break
 		{"032.176.184.000", 20480}, // exists, entry with dups
 		{"100.000.000.000", 126976},
@@ -27,10 +30,11 @@ func TestBlockPosition1(t *testing.T) {
 		{"255.255.255.255", 241664}, // does not exist
 	}
 
-	r, l := open(t, "testdata/rdns1.csv")
-
-	s := NewSearcher(r, l)
-	defer s.Close() // noop - test
+	s, err := NewSearcherFile("testdata/rdns1.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close() // required for NewSearcherFile
 
 	for _, tc := range tests {
 		pos, err := s.BlockPosition([]byte(tc.key))
@@ -41,7 +45,6 @@ func TestBlockPosition1(t *testing.T) {
 			t.Errorf("%q: got %d, expected %d\n", tc.key, pos, tc.expect)
 		}
 	}
-
 }
 
 // Test BlockPosition() using testdata/rdns2.csv
@@ -380,6 +383,39 @@ func TestLinesMultiBlock2(t *testing.T) {
 
 	o := Options{Header: true}
 	s, err := NewSearcherFileOptions("testdata/alstom4.csv", o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close() // required for NewSearcherFile
+
+	for _, tc := range tests {
+		lines, err := s.Lines([]byte(tc.key))
+		if err != nil {
+			if err != ErrNotFound {
+				t.Fatalf("%s: %s\n", tc.key, err.Error())
+			}
+		}
+		if string(lines[0]) != tc.first_line {
+			t.Errorf("%q => first line %q\n   expected %q\n", tc.key, lines[0], tc.first_line)
+		}
+		if string(lines[len(lines)-1]) != tc.last_line {
+			t.Errorf("%q => last line %q\n   expected %q\n", tc.key, lines[len(lines)-1], tc.last_line)
+		}
+	}
+}
+
+// Test Lines() (without header, multiple blocks, starting block 1)
+func TestLinesMultiBlock3(t *testing.T) {
+	var tests = []struct {
+		key        string
+		first_line string
+		last_line  string
+	}{
+		{"foo,", "foo,1", "foo,10000"},
+	}
+
+	o := Options{Header: false}
+	s, err := NewSearcherFileOptions("testdata/foo.csv", o)
 	if err != nil {
 		t.Fatal(err)
 	}

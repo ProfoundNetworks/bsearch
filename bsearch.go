@@ -125,15 +125,17 @@ func NewSearcherFileOptions(filename string, options Options) (*Searcher, error)
 	return s, nil
 }
 
-// BlockPosition does a block-based binary search on its underlying reader,
-// comparing only the first line of each block. It returns the byte offset
-// of the last block whose first line begins with a byte sequence less than b
-// (using a bytewise comparison). The underlying data must therefore be
-// bytewise-sorted (e.g. using a sort with `LC_COLLATE=C` set).
+// BlockPosition is a low-level method that does a block-based binary
+// search on its underlying reader, comparing only the first line of
+// each block. It returns the byte offset of the last block whose
+// initial line begins with a byte sequence less than b (using a
+// bytewise comparison), or else 0 (it does not return ErrNotFound).
+// The underlying data must therefore be bytewise-sorted (e.g. using
+// a sort with `LC_COLLATE=C` set).
 //
 // BlockPosition does not check whether a line beginning with b actually
-// exists, so it will always returns an offset unless an error occurs. On
-// error, BlockPosition returns an offset of -1, and a non-nil error.
+// exists, so it will always returns an offset unless an unexpected error
+// occurs. On error, it returns an offset of -1 and the error.
 //
 // Typical use cases probably want to use Line() or LinePosition() instead.
 func (s *Searcher) BlockPosition(b []byte) (int64, error) {
@@ -183,10 +185,9 @@ func (s *Searcher) BlockPosition(b []byte) (int64, error) {
 			cmpEnd = len(b)
 		}
 
+		// Compare line against b, keeping only if less than
 		cmp := s.compare(s.buf[cmpBegin:cmpEnd], b)
 		//fmt.Fprintf(os.Stderr, "+ %s: comparing vs. %q, cmp %d\n", string(b), string(s.buf[cmpBegin:cmpEnd]), cmp)
-
-		// Check line against searchStr
 		if cmp == -1 {
 			begin = mid
 		} else {
