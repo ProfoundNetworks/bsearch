@@ -39,6 +39,7 @@ type Index struct {
 	List      []IndexEntry `yaml:"list"`
 }
 
+// epoch returns the modtime for filename in epoch/unix format
 func epoch(filename string) (int64, error) {
 	stat, err := os.Stat(filename)
 	if err != nil {
@@ -47,24 +48,47 @@ func epoch(filename string) (int64, error) {
 	return stat.ModTime().Unix(), nil
 }
 
+// IndexFile returns the basename of the index file associated with filename
+func IndexFile(filename string) string {
+	reNonSuffix := regexp.MustCompile(`^[^.]+`)
+	matches := reNonSuffix.FindStringSubmatch(filepath.Base(filename))
+	idxfile := matches[0] + "." + indexSuffix
+	return idxfile
+}
+
 // processBlock processes the block in buf[:bytesread] and returns an IndexEntry
 // for the first line it finds.
-func processBlock(buf []byte, bytesread int, blockPosition int64, delim string, firstBlock, prevNL bool) (IndexEntry, error) {
-	// Find first newline
+func processBlock(reader io.ReaderAt, buf []byte, bytesread int, blockPosition int64, delim string) (IndexEntry, error) {
+	var err error
 	nlidx := -1
-	if !prevNL {
+
+	// Find first newline
+	if blockPosition > 0 {
 		nlidx = bytes.IndexByte(buf[:bytesread], '\n')
 		if nlidx == -1 {
-			// Corner case - no newline found in block
-			return IndexEntry{}, errors.New("Missing nlidx handling not yet implemented")
+			// If no newline exists in block, we can skip the block entirely
+			blockPosition += int64(bytesread)
+			bytesread, err = reader.ReadAt(buf, blockPosition)
+			if err != nil {
+				return IndexEntry{}, err
+			}
+			return processBlock(reader, buf, bytesread, blockPosition, delim)
 		}
 	}
 
 	// Find delimiter
 	didx := bytes.IndexByte(buf[nlidx+1:bytesread], byte(delim[0]))
 	if didx == -1 {
-		// Corner case - no delimiter found in block
-		return IndexEntry{}, fmt.Errorf("Missing didx handling not yet implemented (nlidx %d):\n%s\n", nlidx, string(buf[nlidx+1:bytesread]))
+		// If no delimiter is found in block, re-read from nlidx
+		if nlidx == -1 {
+			return IndexEntry{}, ErrKeyExceedsBlocksize
+		}
+		blockPosition += int64(nlidx)
+		bytesread, err = reader.ReadAt(buf, blockPosition)
+		if err != nil {
+			return IndexEntry{}, err
+		}
+		return processBlock(reader, buf, bytesread, blockPosition, delim)
 	}
 	didx += nlidx + 1
 
@@ -79,13 +103,13 @@ func processBlock(buf []byte, bytesread int, blockPosition int64, delim string, 
 	entry.Offset = blockPosition + int64(nlidx) + 1
 
 	// On the first block only, check for the presence of a header
-	if firstBlock {
+	if blockPosition == 0 {
 		nlidx = bytes.IndexByte(buf[:bytesread], '\n')
 		if nlidx == -1 {
 			// Corner case - no newline found in block
-			return IndexEntry{}, errors.New("Missing nlidx handling (firstBlock) not yet implemented")
+			return IndexEntry{}, errors.New("Missing first block nlidx handling not yet implemented")
 		}
-		entry2, err := processBlock(buf[nlidx+1:bytesread], bytesread-(nlidx+1), blockPosition+int64(nlidx+1), delim, false, true)
+		entry2, err := processBlock(reader, buf[nlidx:bytesread], bytesread-(nlidx), blockPosition+int64(nlidx), delim)
 		if err != nil {
 			return IndexEntry{}, err
 		}
@@ -96,14 +120,6 @@ func processBlock(buf []byte, bytesread int, blockPosition int64, delim string, 
 	}
 
 	return entry, nil
-}
-
-// IndexFile returns the basename of the index file associated with filename
-func IndexFile(filename string) string {
-	reNonSuffix := regexp.MustCompile(`^[^.]+`)
-	matches := reNonSuffix.FindStringSubmatch(filepath.Base(filename))
-	idxfile := matches[0] + "." + indexSuffix
-	return idxfile
 }
 
 // NewIndex creates a new Index for the filename dataset from scratch
@@ -134,15 +150,15 @@ func NewIndex(filename string) (*Index, error) {
 	list := []IndexEntry{}
 	var blockPosition int64 = 0
 	firstBlock := true
-	prevNL := true
 	prevKey := ""
+	var entry IndexEntry
 	for {
 		bytesread, err := reader.ReadAt(buf, blockPosition)
 		if err != nil && err != io.EOF {
 			return nil, err
 		}
 		if bytesread > 0 {
-			entry, err := processBlock(buf, bytesread, blockPosition, index.Delimiter, firstBlock, prevNL)
+			entry, err = processBlock(reader, buf, bytesread, blockPosition, index.Delimiter)
 			if err != nil {
 				return nil, err
 			}
@@ -152,6 +168,7 @@ func NewIndex(filename string) (*Index, error) {
 			} else if prevKey > entry.Key {
 				return nil, fmt.Errorf("Error: key sort violation - %q > %q\n", prevKey, entry.Key)
 			}
+			// Set prevKey and blockPosition
 			prevKey = entry.Key
 			blockPosition += int64(bytesread)
 			// If the first offset is not zero we've skipped a header
@@ -161,10 +178,6 @@ func NewIndex(filename string) (*Index, error) {
 		}
 		if err != nil && err == io.EOF {
 			break
-		}
-		prevNL = false
-		if buf[bytesread-1] == '\n' {
-			prevNL = true
 		}
 		firstBlock = false
 	}
