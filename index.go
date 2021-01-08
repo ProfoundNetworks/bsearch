@@ -21,7 +21,17 @@ const (
 	indexSuffix = "bsx"
 )
 
+type IndexSemantics int
+
+const (
+	IndexUnset IndexSemantics = iota
+	IndexRequired
+	IndexCreate
+	IndexNone
+)
+
 var (
+	ErrNoIndexFound = errors.New("No index file found")
 	ErrIndexExpired = errors.New("Index is out of date")
 )
 

@@ -25,6 +25,7 @@ var opts struct {
 	Header   bool   `short:"H" long:"hdr" description:"ignore first line (header) in Filename when doing lookups"`
 	BufferSz int    `short:"s" long:"bs" description:"buffer size to allocate (max line size), in MB" default:"1"`
 	Fatal    bool   `short:"f" long:"fatal" description:"die on any errors"`
+	Index    string `short:"i" long:"index" description:"index enum: [required|create|none]"`
 	Args     struct {
 		Filename string
 	} `positional-args:"yes" required:"yes"`
@@ -58,6 +59,20 @@ func main() {
 		}
 		usage()
 	}
+	var idxopt bsearch.IndexSemantics = 0
+	if opts.Index != "" {
+		switch opts.Index {
+		case "required":
+			idxopt = bsearch.IndexRequired
+		case "create":
+			idxopt = bsearch.IndexCreate
+		case "none":
+			idxopt = bsearch.IndexNone
+		default:
+			fmt.Fprintf(os.Stderr, "Error: invalid --index argument %q\n\n", opts.Index)
+			usage()
+		}
+	}
 
 	// Setup
 	log.SetFlags(0)
@@ -70,7 +85,7 @@ func main() {
 	}
 
 	// Instantiate a bsearch.Searcher
-	bso := bsearch.Options{Header: opts.Header}
+	bso := bsearch.Options{Header: opts.Header, Index: idxopt}
 	bss, err := bsearch.NewSearcherFileOptions(opts.Args.Filename, bso)
 	if err != nil {
 		log.Fatal(err)

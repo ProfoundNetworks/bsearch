@@ -69,7 +69,10 @@ func TestBlockPosition2(t *testing.T) {
 	r, l := open(t, "testdata/rdns2.csv")
 
 	o := Options{Blocksize: 8192, Compare: PrefixCompareString}
-	s := NewSearcherOptions(r, l, o)
+	s, err := NewSearcherOptions(r, l, o)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer s.Close() // noop - test
 
 	for _, tc := range tests {

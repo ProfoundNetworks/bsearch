@@ -37,6 +37,7 @@ type Options struct {
 	Header    bool                  // first line of dataset is header and should be ignored
 	Boundary  bool                  // search string must be followed by a word boundary
 	MatchLE   bool                  // LinePosition uses less-than-or-equal-to match semantics
+	Index     IndexSemantics        // Index semantics: 1=Require, 2=Create, 3=None
 }
 
 // Searcher provides binary search functionality for line-ordered byte streams by prefix.
@@ -45,6 +46,7 @@ type Searcher struct {
 	l         int64                 // data length
 	blocksize int64                 // data blocksize used for binary search
 	buf       []byte                // data buffer (blocksize+1)
+	idxopt    IndexSemantics        // index option: 1=Require, 2=Create, 3=None
 	idx       *Index                // optional block index
 	compare   func(a, b []byte) int // prefix comparison function
 	header    bool                  // first line of dataset is header and should be ignored
@@ -71,6 +73,9 @@ func (s *Searcher) setOptions(options Options) {
 	if options.MatchLE {
 		s.matchLE = true
 	}
+	if options.Index > 0 && options.Index <= 3 {
+		s.idxopt = options.Index
+	}
 }
 
 // NewSearcher returns a new Searcher for the ReaderAt r for data of length bytes,
@@ -83,11 +88,18 @@ func NewSearcher(r io.ReaderAt, length int64) *Searcher {
 
 // NewSearcherOptions returns a new Searcher for the ReaderAt r for data of length bytes,
 // overriding the default options with those in options.
-func NewSearcherOptions(r io.ReaderAt, length int64, options Options) *Searcher {
+func NewSearcherOptions(r io.ReaderAt, length int64, options Options) (*Searcher, error) {
 	s := Searcher{r: r, l: length, blocksize: defaultBlocksize, compare: PrefixCompare}
+
 	s.setOptions(options)
 	s.buf = make([]byte, s.blocksize+1) // we read blocksize+1 bytes to check for a preceding newline
-	return &s
+
+	// Return an error if s.idxopt == IndexRequired|IndexCreate
+	if s.idxopt == IndexRequired || s.idxopt == IndexCreate {
+		return nil, errors.New("IndexRequired/IndexCreate options are only supported with NewSearcherFileOptions")
+	}
+
+	return &s, nil
 }
 
 // NewSearcherFile returns a new Searcher for filename, using default options.
@@ -114,7 +126,9 @@ func NewSearcherFile(filename string) (*Searcher, error) {
 	s := Searcher{r: fh, l: filesize, blocksize: defaultBlocksize, compare: PrefixCompare}
 	s.buf = make([]byte, s.blocksize+1) // we read blocksize+1 bytes to check for a preceding newline
 
-	if idx, err := NewIndexLoad(filename); err == nil {
+	// Load index if one exists
+	idx, _ := NewIndexLoad(filename)
+	if idx != nil {
 		s.idx = idx
 	}
 
@@ -128,6 +142,20 @@ func NewSearcherFileOptions(filename string, options Options) (*Searcher, error)
 		return nil, err
 	}
 	s.setOptions(options)
+
+	// Discard index if s.idxopt == IndexNone
+	if s.idx != nil && s.idxopt == IndexNone {
+		s.idx = nil
+	}
+	// Return an error if s.idxopt == IndexRequired and we have no index
+	if s.idx == nil && s.idxopt == IndexRequired {
+		return nil, ErrNoIndexFound
+	}
+	// IndexCreate is not implemented yet
+	if s.idxopt == IndexCreate {
+		return nil, errors.New("IndexCreate not yet implemented")
+	}
+
 	return s, nil
 }
 
