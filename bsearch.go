@@ -151,9 +151,16 @@ func NewSearcherFileOptions(filename string, options Options) (*Searcher, error)
 	if s.idx == nil && s.idxopt == IndexRequired {
 		return nil, ErrNoIndexFound
 	}
-	// IndexCreate is not implemented yet
-	if s.idxopt == IndexCreate {
-		return nil, errors.New("IndexCreate not yet implemented")
+	// If we have no index and IndexCreate is specified, create one
+	if s.idx == nil && s.idxopt == IndexCreate {
+		index, err := NewIndex(filename)
+		if err != nil {
+			return nil, err
+		}
+		err = index.Write()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return s, nil

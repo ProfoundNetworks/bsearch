@@ -59,7 +59,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	// Noop if a valid index already exists
+	// Noop if a valid index already exists (unless --force is specified)
 	if !opts.Force {
 		_, err = bsearch.NewIndexLoad(opts.Args.Filename)
 		if err == nil {
