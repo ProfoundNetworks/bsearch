@@ -90,9 +90,9 @@ func main() {
 			break
 		}
 		line, err := bss.Line([]byte(key + opts.Sep))
-		if err == bsearch.ErrLineExceedsBlocksize {
+		if err == bsearch.ErrKeyExceedsBlocksize {
 			if opts.Fatal {
-				fmt.Printf("Error: lookup on %q got ErrLineExceedsBlocksize\n", key)
+				fmt.Printf("Error: lookup on %q got ErrKeyExceedsBlocksize\n", key)
 				os.Exit(2)
 			}
 			eleb++

@@ -26,9 +26,9 @@ const (
 )
 
 var (
-	ErrNotFound             = errors.New("not found")
-	ErrLineExceedsBlocksize = errors.New("line length exceeds blocksize")
-	ErrNotFile              = errors.New("filename exists but is not a file")
+	ErrNotFound            = errors.New("not found")
+	ErrKeyExceedsBlocksize = errors.New("key length exceeds blocksize")
+	ErrNotFile             = errors.New("filename exists but is not a file")
 )
 
 type Options struct {
@@ -150,7 +150,7 @@ func (s *Searcher) BlockPosition(b []byte) (int64, error) {
 	end = s.l
 
 	if int64(len(b)) > s.blocksize {
-		return -1, ErrLineExceedsBlocksize
+		return -1, ErrKeyExceedsBlocksize
 	}
 
 	if s.idx != nil {
