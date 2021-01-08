@@ -161,6 +161,7 @@ func NewSearcherFileOptions(filename string, options Options) (*Searcher, error)
 		if err != nil {
 			return nil, err
 		}
+		s.idx = index
 	}
 
 	return s, nil
