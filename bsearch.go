@@ -201,12 +201,8 @@ func (s *Searcher) BlockPosition(b []byte) (int64, error) {
 		//fmt.Fprintf(os.Stderr, "+ %s: begin %d, end %d, mid %d\n", string(b), begin, end, mid)
 
 		// If mid == begin and we have more than one block, skip to next
-		if mid == begin && end > mid+s.blocksize {
-			mid = mid + s.blocksize
-		}
-		if mid == begin || mid == end {
-			//fmt.Fprintf(os.Stderr, "+ %s: mid break condition met\n", string(b))
-			break
+		if mid == begin {
+			mid += s.blocksize
 		}
 
 		var cmpBegin, bytesread int
@@ -222,7 +218,7 @@ func (s *Searcher) BlockPosition(b []byte) (int64, error) {
 		// Compare line data vs. b
 		cmpEnd := cmpBegin + len(b)
 		if cmpEnd > bytesread {
-			// Corner case: not enough data left in block to read the full key
+			// If not enough data left in block to read the full key, do a re-read
 			bytesread, err = s.r.ReadAt(s.buf, mid+int64(cmpBegin)-1)
 			if err != nil && err != io.EOF {
 				return -1, err
@@ -237,6 +233,9 @@ func (s *Searcher) BlockPosition(b []byte) (int64, error) {
 		if cmp == -1 {
 			begin = mid
 		} else {
+			if mid == end {
+				break
+			}
 			end = mid
 		}
 	}
@@ -254,6 +253,9 @@ func (s *Searcher) findFirstLinePosFrom(begin, end int64) (newBegin int64, bytes
 	}
 	bytesread, err = s.r.ReadAt(s.buf, readBegin)
 	if err != nil && err != io.EOF {
+		return -1, bytesread, -1, err
+	}
+	if bytesread == 0 {
 		return -1, bytesread, -1, err
 	}
 

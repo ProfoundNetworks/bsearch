@@ -111,7 +111,8 @@ func TestBlockPosition3(t *testing.T) {
 		{"255.255.255.255", 241678}, // does not exist
 	}
 
-	s, err := NewSearcherFile("testdata/rdns1i.csv")
+	o := Options{Index: IndexCreate}
+	s, err := NewSearcherFileOptions("testdata/rdns1i.csv", o)
 	if err != nil {
 		t.Fatal(err)
 	}

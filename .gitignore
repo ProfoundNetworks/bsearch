@@ -12,8 +12,8 @@
 /data/*
 /delta/applied/*
 /dist/*
-/node_modules/*
 /pkg/linux_amd64/*
 /pkg/*.*/
 /src/*.*/
+/testdata/rdns1i.bsx
 /var/*
