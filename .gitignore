@@ -6,6 +6,9 @@
 /TODO
 /c.out
 /cmd/bsearch/bsearch
+/cmd/bsearch_compress/bsearch_compress
+/cmd/bsearch_compress/testdata/*zst
+/cmd/bsearch_compress/testdata/*gz
 /cmd/bsearch_index/bsearch_index
 /cmd/bsearch_selftest/bsearch_selftest
 /cmd/bsearch_selftest/testdata/ipv4.csv

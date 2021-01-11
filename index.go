@@ -73,9 +73,9 @@ func isCompressed(filename string) bool {
 
 // IndexFile returns the index file associated with filename
 func IndexFile(filename string) string {
-	reNonSuffix := regexp.MustCompile(`^[^.]+`)
-	matches := reNonSuffix.FindStringSubmatch(filepath.Base(filename))
-	idxfile := matches[0] + "." + indexSuffix
+	reDot := regexp.MustCompile(`\.`)
+	basename := reDot.ReplaceAllString(filepath.Base(filename), "_")
+	idxfile := basename + "." + indexSuffix
 	return idxfile
 }
 

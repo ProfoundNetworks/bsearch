@@ -19,7 +19,7 @@ import (
 // Options
 var opts struct {
 	Verbose bool `short:"v" long:"verbose" description:"display verbose debug output"`
-	Force   bool `short:"F" long:"force" description:"force index generation even if up-to-date"`
+	Force   bool `short:"f" long:"force" description:"force index generation even if up-to-date"`
 	Args    struct {
 		Filename string
 	} `positional-args:"yes" required:"yes"`
