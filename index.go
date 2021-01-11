@@ -42,6 +42,7 @@ var reCompressed = regexp.MustCompile(`\.zst$`)
 type IndexEntry struct {
 	Key    string `yaml:"k"`
 	Offset int64  `yaml:"o"`
+	Length int    `yaml:"l"`
 }
 
 type Index struct {
@@ -70,7 +71,7 @@ func isCompressed(filename string) bool {
 	return false
 }
 
-// IndexFile returns the basename of the index file associated with filename
+// IndexFile returns the index file associated with filename
 func IndexFile(filename string) string {
 	reNonSuffix := regexp.MustCompile(`^[^.]+`)
 	matches := reNonSuffix.FindStringSubmatch(filepath.Base(filename))
@@ -78,9 +79,14 @@ func IndexFile(filename string) string {
 	return idxfile
 }
 
+// IndexPath returns index path assocated with filename
+func IndexPath(filename string) string {
+	return filepath.Join(filepath.Dir(filename), IndexFile(filename))
+}
+
 // processBlock processes the block in buf[:bytesread] and returns an IndexEntry
 // for the first line it finds.
-func processBlock(reader io.ReaderAt, buf []byte, bytesread int, blockPosition int64, delim string) (IndexEntry, error) {
+func processBlock(reader io.ReaderAt, buf []byte, bytesread int, blockPosition int64, delim string, eof bool) (IndexEntry, error) {
 	var err error
 	nlidx := -1
 
@@ -94,7 +100,7 @@ func processBlock(reader io.ReaderAt, buf []byte, bytesread int, blockPosition i
 			if err != nil {
 				return IndexEntry{}, err
 			}
-			return processBlock(reader, buf, bytesread, blockPosition, delim)
+			return processBlock(reader, buf, bytesread, blockPosition, delim, eof)
 		}
 	}
 
@@ -110,7 +116,7 @@ func processBlock(reader io.ReaderAt, buf []byte, bytesread int, blockPosition i
 		if err != nil {
 			return IndexEntry{}, err
 		}
-		return processBlock(reader, buf, bytesread, blockPosition, delim)
+		return processBlock(reader, buf, bytesread, blockPosition, delim, eof)
 	}
 	didx += nlidx + 1
 
@@ -123,6 +129,10 @@ func processBlock(reader io.ReaderAt, buf []byte, bytesread int, blockPosition i
 	entry := IndexEntry{}
 	entry.Key = string(buf[nlidx+1 : didx])
 	entry.Offset = blockPosition + int64(nlidx) + 1
+	// We only set entry.Length for the last block in the file
+	if eof {
+		entry.Length = bytesread - nlidx - 1
+	}
 
 	// On the first block only, check for the presence of a header
 	if blockPosition == 0 {
@@ -131,7 +141,7 @@ func processBlock(reader io.ReaderAt, buf []byte, bytesread int, blockPosition i
 			// Corner case - no newline found in block
 			return IndexEntry{}, errors.New("Missing first block nlidx handling not yet implemented")
 		}
-		entry2, err := processBlock(reader, buf[nlidx:bytesread], bytesread-(nlidx), blockPosition+int64(nlidx), delim)
+		entry2, err := processBlock(reader, buf[nlidx:bytesread], bytesread-(nlidx), blockPosition+int64(nlidx), delim, eof)
 		if err != nil {
 			return IndexEntry{}, err
 		}
@@ -180,7 +190,7 @@ func NewIndex(filename string) (*Index, error) {
 			return nil, err
 		}
 		if bytesread > 0 {
-			entry, err = processBlock(reader, buf, bytesread, blockPosition, index.Delimiter)
+			entry, err = processBlock(reader, buf, bytesread, blockPosition, index.Delimiter, err == io.EOF)
 			if err != nil {
 				return nil, err
 			}
@@ -202,6 +212,11 @@ func NewIndex(filename string) (*Index, error) {
 			break
 		}
 		firstBlock = false
+	}
+
+	// Set (all but the last) entry lengths
+	for i := 0; i < len(list)-1; i++ {
+		list[i].Length = int(list[i+1].Offset - list[i].Offset)
 	}
 
 	// Output
