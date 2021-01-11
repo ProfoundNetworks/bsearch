@@ -15,5 +15,5 @@
 /pkg/linux_amd64/*
 /pkg/*.*/
 /src/*.*/
-/testdata/rdns1i.bsx
+/testdata/rdns1i.bsx.zst
 /var/*

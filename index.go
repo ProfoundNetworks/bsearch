@@ -14,26 +14,30 @@ import (
 	"path/filepath"
 	"regexp"
 
+	"github.com/DataDog/zstd"
 	yaml "gopkg.in/yaml.v3"
 )
 
 const (
-	indexSuffix = "bsx"
+	// indexSuffix = "bsx"
+	indexSuffix = "bsx.zst"
 )
 
 type IndexSemantics int
 
 const (
 	IndexUnset IndexSemantics = iota
+	IndexNone
 	IndexRequired
 	IndexCreate
-	IndexNone
 )
 
 var (
 	ErrNoIndexFound = errors.New("No index file found")
 	ErrIndexExpired = errors.New("Index is out of date")
 )
+
+var reCompressed = regexp.MustCompile(`\.zst$`)
 
 type IndexEntry struct {
 	Key    string `yaml:"k"`
@@ -56,6 +60,14 @@ func epoch(filename string) (int64, error) {
 		return 0, err
 	}
 	return stat.ModTime().Unix(), nil
+}
+
+// isCompressed returns true if filename is compressed
+func isCompressed(filename string) bool {
+	if reCompressed.MatchString(filename) {
+		return true
+	}
+	return false
 }
 
 // IndexFile returns the basename of the index file associated with filename
@@ -212,7 +224,20 @@ func NewIndexLoad(filename string) (*Index, error) {
 		}
 	}
 
-	data, err := ioutil.ReadFile(idxpath)
+	var reader io.ReadCloser
+	fh, err := os.Open(idxpath)
+	if err != nil {
+		return nil, err
+	}
+	defer fh.Close()
+	if isCompressed(filename) {
+		reader = zstd.NewReader(fh)
+		defer reader.Close()
+	} else {
+		reader = fh
+	}
+
+	data, err := ioutil.ReadAll(reader)
 	if err != nil {
 		return nil, err
 	}
@@ -271,10 +296,29 @@ func (i *Index) Write() error {
 	if err != nil {
 		return err
 	}
+
 	idxpath := filepath.Join(i.Filedir, IndexFile(i.Filename))
-	err = ioutil.WriteFile(idxpath, data, 0644)
+	var writer io.WriteCloser
+	fh, err := os.OpenFile(idxpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
+	if isCompressed(idxpath) {
+		writer = zstd.NewWriter(fh)
+		defer fh.Close()
+	} else {
+		writer = fh
+	}
+
+	_, err = writer.Write(data)
+	if err != nil {
+		return err
+	}
+
+	err = writer.Close()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
