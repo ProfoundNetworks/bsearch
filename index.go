@@ -230,7 +230,7 @@ func NewIndexLoad(filename string) (*Index, error) {
 		return nil, err
 	}
 	defer fh.Close()
-	if isCompressed(filename) {
+	if isCompressed(idxpath) {
 		reader = zstd.NewReader(fh)
 		defer reader.Close()
 	} else {
