@@ -1,7 +1,9 @@
 /*
 bsearch utility to generate a bsearch index file for a dataset.
-The index file has the same name and location as the dataset,
-but with a '.bsx' suffix (although it is just a yaml text file).
+
+The index file is a zstd-compressed yaml file. It has the same name and
+location as the dataset, but with all '.' characters changed to '_', and
+a '.bsx' suffix e.g. the index for `test_foobar.csv` is `test_foobar_csv.bsx`.
 */
 
 package main

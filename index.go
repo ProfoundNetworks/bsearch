@@ -1,5 +1,10 @@
 /*
 Index provides an optional bsearch index implementation.
+
+The index file is a zstd-compressed yaml file. It has the same name and
+location as the associated dataset, but with all '.' characters changed
+to '_', and a '.bsx' suffix e.g. the index for `test_foobar.csv` is
+`test_foobar_csv.bsx`.
 */
 
 package bsearch
@@ -19,8 +24,7 @@ import (
 )
 
 const (
-	// indexSuffix = "bsx"
-	indexSuffix = "bsx.zst"
+	indexSuffix = "bsx"
 )
 
 type IndexSemantics int
@@ -36,8 +40,6 @@ var (
 	ErrNoIndexFound = errors.New("No index file found")
 	ErrIndexExpired = errors.New("Index is out of date")
 )
-
-var reCompressed = regexp.MustCompile(`\.zst$`)
 
 type IndexEntry struct {
 	Key    string `yaml:"k"`
@@ -61,14 +63,6 @@ func epoch(filename string) (int64, error) {
 		return 0, err
 	}
 	return stat.ModTime().Unix(), nil
-}
-
-// isCompressed returns true if filename is compressed
-func isCompressed(filename string) bool {
-	if reCompressed.MatchString(filename) {
-		return true
-	}
-	return false
 }
 
 // IndexFile returns the index file associated with filename
@@ -245,12 +239,8 @@ func NewIndexLoad(filename string) (*Index, error) {
 		return nil, err
 	}
 	defer fh.Close()
-	if isCompressed(idxpath) {
-		reader = zstd.NewReader(fh)
-		defer reader.Close()
-	} else {
-		reader = fh
-	}
+	reader = zstd.NewReader(fh)
+	defer reader.Close()
 
 	data, err := ioutil.ReadAll(reader)
 	if err != nil {
@@ -318,12 +308,8 @@ func (i *Index) Write() error {
 	if err != nil {
 		return err
 	}
-	if isCompressed(idxpath) {
-		writer = zstd.NewWriter(fh)
-		defer fh.Close()
-	} else {
-		writer = fh
-	}
+	writer = zstd.NewWriter(fh)
+	defer fh.Close()
 
 	_, err = writer.Write(data)
 	if err != nil {
