@@ -1,6 +1,7 @@
 /*
-bsearch selftest utility to load a bsearch dataset and then do
+bsearch selftest utility to load a bsearch CSV dataset and then do
 opts.Count random lookups on keys, checking each result.
+Assumes keys are unique i.e. one line exists per key.
 */
 
 package main
@@ -8,11 +9,13 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"regexp"
 	"strings"
 
+	"github.com/DataDog/zstd"
 	"github.com/ProfoundNetworks/bsearch"
 	flags "github.com/jessevdk/go-flags"
 )
@@ -78,7 +81,7 @@ func main() {
 	log.SetFlags(0)
 
 	// Die if Filename looks compressed
-	re := regexp.MustCompile(`\.(gz|bz2|zst|br)$`)
+	re := regexp.MustCompile(`\.(gz|bz2|br)$`)
 	if re.MatchString(opts.Args.Filename) {
 		fmt.Fprintf(os.Stderr, "Filename %q appears to be compressed - cannot binary search\n", opts.Args.Filename)
 		os.Exit(2)
@@ -104,7 +107,7 @@ func main() {
 		if opts.Count > 0 && i >= opts.Count {
 			break
 		}
-		line, err := bss.Line([]byte(key + opts.Sep))
+		lines, err := bss.Lines([]byte(key + opts.Sep))
 		if err == bsearch.ErrKeyExceedsBlocksize {
 			if opts.Fatal {
 				fmt.Printf("Error: lookup on %q got ErrKeyExceedsBlocksize\n", key)
@@ -116,7 +119,10 @@ func main() {
 		}
 		val2 := ""
 		if err == nil {
-			val2 = strings.TrimPrefix(string(line), key+opts.Sep)
+			if len(lines) > 0 {
+				line := lines[0]
+				val2 = strings.TrimPrefix(string(line), key+opts.Sep)
+			}
 		}
 		vprintf("+ [%d] %q => got %q / exp %q\n", i, key, val2, val)
 		if val != val2 {
@@ -145,7 +151,16 @@ func loadCSVMap(filename, sep string, header bool) map[string]string {
 	if err != nil {
 		log.Fatal(err)
 	}
-	scanner := bufio.NewScanner(fh)
+	defer fh.Close()
+	reCompressed := regexp.MustCompile(`\.zst$`)
+	var reader io.ReadCloser
+	if reCompressed.MatchString(filename) {
+		reader = zstd.NewReader(fh)
+		defer reader.Close()
+	} else {
+		reader = fh
+	}
+	scanner := bufio.NewScanner(reader)
 	// Allocate scanner buffer manually to allow for lines > 64kB
 	maxlen := opts.BufferSz * 1024 * 1024 // BufferSz MB
 	buf := make([]byte, maxlen)
