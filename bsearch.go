@@ -31,6 +31,8 @@ var (
 	ErrNotFile             = errors.New("filename exists but is not a file")
 )
 
+var reCompressed = regexp.MustCompile(`\.zst$`)
+
 type Options struct {
 	Blocksize int64                 // data blocksize used for binary search
 	Compare   func(a, b []byte) int // prefix comparison function
@@ -42,17 +44,19 @@ type Options struct {
 
 // Searcher provides binary search functionality for line-ordered byte streams by prefix.
 type Searcher struct {
-	r         io.ReaderAt           // data reader
-	l         int64                 // data length
-	blocksize int64                 // data blocksize used for binary search
-	buf       []byte                // data buffer (blocksize+1)
-	idxopt    IndexSemantics        // index option: 1=Require, 2=Create, 3=None
-	idx       *Index                // optional block index
-	compare   func(a, b []byte) int // prefix comparison function
-	header    bool                  // first line of dataset is header and should be ignored
-	boundary  bool                  // search string must be followed by a word boundary
-	matchLE   bool                  // LinePosition uses less-than-or-equal-to match semantics
-	reWord    *regexp.Regexp        // regexp used for boundary matching
+	r          io.ReaderAt           // data reader
+	l          int64                 // data length
+	blocksize  int64                 // data blocksize used for binary search
+	buf        []byte                // data buffer (blocksize+1)
+	dbuf       []byte                // decompressed data buffer
+	dbufOffset int64                 // decompressed data buffer offset
+	indexOpt   IndexSemantics        // index option: 1=Require, 2=Create, 3=None
+	Index      *Index                // optional block index
+	compare    func(a, b []byte) int // prefix comparison function
+	header     bool                  // first line of dataset is header and should be ignored
+	boundary   bool                  // search string must be followed by a word boundary
+	matchLE    bool                  // LinePosition uses less-than-or-equal-to match semantics
+	reWord     *regexp.Regexp        // regexp used for boundary matching
 }
 
 // setOptions sets the given options on searcher
@@ -74,8 +78,20 @@ func (s *Searcher) setOptions(options Options) {
 		s.matchLE = true
 	}
 	if options.Index > 0 && options.Index <= 3 {
-		s.idxopt = options.Index
+		s.indexOpt = options.Index
 	}
+}
+
+// isCompressed returns true if there is an underlying file that is compressed
+// (and which also requires we have an associated index).
+func (s *Searcher) isCompressed() bool {
+	if s.Index == nil {
+		return false
+	}
+	if !reCompressed.MatchString(s.Index.Filename) {
+		return false
+	}
+	return true
 }
 
 // NewSearcher returns a new Searcher for the ReaderAt r for data of length bytes,
@@ -94,8 +110,8 @@ func NewSearcherOptions(r io.ReaderAt, length int64, options Options) (*Searcher
 	s.setOptions(options)
 	s.buf = make([]byte, s.blocksize+1) // we read blocksize+1 bytes to check for a preceding newline
 
-	// Return an error if s.idxopt == IndexRequired|IndexCreate
-	if s.idxopt == IndexRequired || s.idxopt == IndexCreate {
+	// Return an error if s.indexOpt == IndexRequired|IndexCreate
+	if s.indexOpt == IndexRequired || s.indexOpt == IndexCreate {
 		return nil, errors.New("IndexRequired/IndexCreate options are only supported with NewSearcherFileOptions")
 	}
 
@@ -127,9 +143,9 @@ func NewSearcherFile(filename string) (*Searcher, error) {
 	s.buf = make([]byte, s.blocksize+1) // we read blocksize+1 bytes to check for a preceding newline
 
 	// Load index if one exists
-	idx, _ := NewIndexLoad(filename)
-	if idx != nil {
-		s.idx = idx
+	index, _ := NewIndexLoad(filename)
+	if index != nil {
+		s.Index = index
 	}
 
 	return &s, nil
@@ -143,16 +159,16 @@ func NewSearcherFileOptions(filename string, options Options) (*Searcher, error)
 	}
 	s.setOptions(options)
 
-	// Discard index if s.idxopt == IndexNone
-	if s.idx != nil && s.idxopt == IndexNone {
-		s.idx = nil
+	// Discard index if s.indexOpt == IndexNone
+	if s.Index != nil && s.indexOpt == IndexNone {
+		s.Index = nil
 	}
-	// Return an error if s.idxopt == IndexRequired and we have no index
-	if s.idx == nil && s.idxopt == IndexRequired {
+	// Return an error if s.indexOpt == IndexRequired and we have no index
+	if s.Index == nil && s.indexOpt == IndexRequired {
 		return nil, ErrNoIndexFound
 	}
 	// If we have no index and IndexCreate is specified, create one
-	if s.idx == nil && s.idxopt == IndexCreate {
+	if s.Index == nil && s.indexOpt == IndexCreate {
 		index, err := NewIndex(filename)
 		if err != nil {
 			return nil, err
@@ -161,7 +177,7 @@ func NewSearcherFileOptions(filename string, options Options) (*Searcher, error)
 		if err != nil {
 			return nil, err
 		}
-		s.idx = index
+		s.Index = index
 	}
 
 	return s, nil
@@ -189,8 +205,8 @@ func (s *Searcher) BlockPosition(b []byte) (int64, error) {
 		return -1, ErrKeyExceedsBlocksize
 	}
 
-	if s.idx != nil {
-		return s.idx.BlockPosition(b)
+	if s.Index != nil {
+		return s.Index.BlockPosition(b)
 	}
 
 	for end-begin > 0 {

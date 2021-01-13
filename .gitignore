@@ -10,6 +10,7 @@
 /cmd/bsearch_compress/testdata/*zst
 /cmd/bsearch_compress/testdata/*gz
 /cmd/bsearch_index/bsearch_index
+/cmd/bsearch_lint_index/bsearch_lint_index
 /cmd/bsearch_selftest/bsearch_selftest
 /cmd/bsearch_selftest/testdata/ipv4.csv
 /data/*
