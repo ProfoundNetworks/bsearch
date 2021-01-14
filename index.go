@@ -267,6 +267,16 @@ func NewIndexLoad(filename string) (*Index, error) {
 // main Searcher.BlockPosition semantics, which are conservative because the
 // first block may include a header.)
 func (i *Index) BlockPosition(b []byte) (int64, error) {
+	entry := i.BlockEntry(b)
+	return entry.Offset, nil
+}
+
+// BlockEntry does a binary search on the block entries in the index List
+// and returns the last entry with a Key less than b. If no such entry exists,
+// it returns the first entry. (This matches the main Searcher.BlockPosition
+// semantics, which are conservative because the first block may include a
+// header.)
+func (i *Index) BlockEntry(b []byte) IndexEntry {
 	var begin, mid, end int
 	list := i.List
 	begin = 0
@@ -292,7 +302,7 @@ func (i *Index) BlockPosition(b []byte) (int64, error) {
 		}
 	}
 
-	return list[begin].Offset, nil
+	return list[begin]
 }
 
 // Write writes the index to disk

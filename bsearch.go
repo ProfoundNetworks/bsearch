@@ -19,6 +19,8 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/DataDog/zstd"
 )
 
 const (
@@ -47,7 +49,8 @@ type Searcher struct {
 	r          io.ReaderAt           // data reader
 	l          int64                 // data length
 	blocksize  int64                 // data blocksize used for binary search
-	buf        []byte                // data buffer (blocksize+1)
+	buf        []byte                // data buffer
+	bufOffset  int64                 // data buffer offset
 	dbuf       []byte                // decompressed data buffer
 	dbufOffset int64                 // decompressed data buffer offset
 	indexOpt   IndexSemantics        // index option: 1=Require, 2=Create, 3=None
@@ -97,7 +100,7 @@ func (s *Searcher) isCompressed() bool {
 // NewSearcher returns a new Searcher for the ReaderAt r for data of length bytes,
 // using default options.
 func NewSearcher(r io.ReaderAt, length int64) *Searcher {
-	s := Searcher{r: r, l: length, blocksize: defaultBlocksize, compare: PrefixCompare}
+	s := Searcher{r: r, l: length, blocksize: defaultBlocksize, bufOffset: -1, dbufOffset: -1, compare: PrefixCompare}
 	s.buf = make([]byte, s.blocksize+1) // we read blocksize+1 bytes to check for a preceding newline
 	return &s
 }
@@ -282,7 +285,7 @@ func (s *Searcher) findFirstLinePosFrom(begin, end int64) (newBegin int64, bytes
 
 	// If the first byte read is not a newline, we are in the middle of a line -
 	// skip to first '\n'
-	if idx := bytes.IndexByte(s.buf[1:bytesread], '\n'); idx == -1 {
+	if nlidx := bytes.IndexByte(s.buf[1:bytesread], '\n'); nlidx == -1 {
 		// If no newline is found and there are no more blocks, we're done
 		if begin+s.blocksize >= end {
 			return -1, bytesread, -1, nil
@@ -290,10 +293,134 @@ func (s *Searcher) findFirstLinePosFrom(begin, end int64) (newBegin int64, bytes
 		// If no newline is found, rerun on next block
 		return s.findFirstLinePosFrom(begin+s.blocksize, end)
 	} else {
-		bufPos += idx + 1
+		bufPos += nlidx + 1
 	}
 
 	return begin, bytesread, bufPos, nil
+}
+
+func (s *Searcher) readBlockEntry(entry IndexEntry) error {
+	// Noop if already done
+	if s.bufOffset == entry.Offset {
+		return nil
+	}
+
+	if entry.Length > cap(s.buf) {
+		s.buf = make([]byte, entry.Length)
+	} else {
+		s.buf = s.buf[:entry.Length]
+	}
+
+	bytesread, err := s.r.ReadAt(s.buf, entry.Offset)
+	if err != nil && err != io.EOF {
+		s.bufOffset = -1
+		return err
+	}
+	if bytesread < entry.Length {
+		s.bufOffset = -1
+		return fmt.Errorf("error reading block entry - read %d bytes, expected %d\n", bytesread, entry.Length)
+	}
+
+	s.bufOffset = entry.Offset
+	return nil
+}
+
+func (s *Searcher) decompressBlockEntry(entry IndexEntry) error {
+	// Noop if already done
+	if s.dbufOffset == entry.Offset {
+		return nil
+	}
+
+	// Read entry block into s.buf
+	err := s.readBlockEntry(entry)
+	if err != nil {
+		return err
+	}
+	//fmt.Printf("+ readBlockEntry ok, len %d\n", len(s.buf))
+
+	// Decompress
+	s.dbuf, err = zstd.Decompress(s.dbuf, s.buf)
+	if err != nil {
+		s.dbufOffset = -1
+		return err
+	}
+
+	s.dbufOffset = entry.Offset
+	return nil
+}
+
+// scanLineOffset returns the offset of the first line within buf
+// that begins with the byte sequence b.
+// If not found, normally returns -1 and ErrNotFound.
+// If not found and the MatchLE flag is set, it returns the last line
+// position with a byte sequence < b.
+func (s *Searcher) scanLineOffset(buf []byte, b []byte) (int, error) {
+	var trailing int = -1
+	begin := 0
+
+	// Scan lines until we find one >= b
+	for {
+		cmp := s.compare(buf[begin:begin+len(b)], b)
+		//fmt.Fprintf(os.Stderr, "+ comparing %q (begin %d) vs. %q == %d\n", string(buf[begin:begin+len(b)]), begin, string(b), cmp)
+		if cmp == 0 {
+			return begin, nil
+		} else if cmp == 1 {
+			break
+		}
+
+		// Current line < b - find next newline
+		nlidx := bytes.IndexByte(buf[begin:], '\n')
+		if nlidx == -1 {
+			// If no new newline is found, we're done
+			break
+		}
+
+		// Newline found - update begin
+		trailing = begin
+		begin += nlidx + 1
+	}
+
+	// If using less-than-or-equal-to semantics, return trailingPosition if that is set
+	if s.matchLE && trailing > -1 {
+		return trailing, nil
+	}
+
+	return -1, ErrNotFound
+}
+
+// scanLinesMatching returns all lines beginning with byte sequence b from buf.
+func (s *Searcher) scanLinesMatching(buf, b []byte) ([][]byte, error) {
+	// Find the offset of the first line in buf beginning with b
+	begin, err := s.scanLineOffset(buf, b)
+	if err != nil {
+		return [][]byte{}, err
+	}
+	//fmt.Printf("+ line offset for %q in buf: %d\n", string(b), begin)
+
+	var lines [][]byte
+	for begin < len(buf) {
+		nlidx := bytes.IndexByte(buf[begin:], '\n')
+		cmp := s.compare(buf[begin:begin+len(b)], b)
+		//fmt.Printf("+ comparing %q (begin %d, nlidx %d) vs. %q == %d\n", string(buf[begin:begin+len(b)]), begin, nlidx, string(b), cmp)
+		if cmp == -1 {
+			if nlidx == -1 {
+				break
+			}
+			begin += nlidx + 1
+			continue
+		}
+		if cmp == 0 {
+			if nlidx == -1 {
+				lines = append(lines, buf[begin:])
+				break
+			}
+			lines = append(lines, buf[begin:begin+nlidx])
+			begin += nlidx + 1
+			continue
+		}
+		break
+	}
+	return lines, nil
 }
 
 // LinePosition returns the byte offset in the reader for the first line
@@ -315,6 +442,7 @@ func (s *Searcher) LinePosition(b []byte) (int64, error) {
 	if err != nil {
 		return -1, err
 	}
+	//fmt.Fprintf(os.Stderr, "+ BlockPosition returned: %d\n", blockPosition)
 
 	// Start one byte back in case we have a block-end newline
 	if blockPosition > 0 {
@@ -336,8 +464,8 @@ outer:
 		// and partial lines in subsequent ones)
 		begin := 0
 		if blockPosition > 0 || s.header {
-			idx := bytes.IndexByte(s.buf[:bytesread], '\n')
-			if idx == -1 {
+			nlidx := bytes.IndexByte(s.buf[:bytesread], '\n')
+			if nlidx == -1 {
 				// If no new newline is found and we're at EOF, we're done
 				if readErr != nil && (readErr == io.EOF || bytesread < len(s.buf)) {
 					break
@@ -349,7 +477,7 @@ outer:
 			}
 
 			// Newline found - set begin to next position
-			begin = idx + 1
+			begin = nlidx + 1
 
 			// Check we aren't out of data - if we are, re-read from current newline
 			if begin+len(b) > bytesread {
@@ -374,9 +502,9 @@ outer:
 				break outer
 			}
 
-			// Current line < b; find next newline
-			idx := bytes.IndexByte(s.buf[begin:bytesread], '\n')
-			if idx == -1 {
+			// Current line < b - find next newline
+			nlidx := bytes.IndexByte(s.buf[begin:bytesread], '\n')
+			if nlidx == -1 {
 				// If no new newline is found and we're at EOF, we're done
 				if readErr != nil && readErr == io.EOF {
 					break outer
@@ -390,7 +518,7 @@ outer:
 
 			// Newline found - update begin
 			trailingPosition = blockPosition + int64(begin)
-			begin += idx + 1
+			begin += nlidx + 1
 
 			// Out of data - re-read from current newline
 			if begin+len(b) > bytesread {
@@ -435,8 +563,8 @@ func (s *Searcher) firstLineFrom(pos int64) ([]byte, error) {
 	}
 
 	// Find the first newline
-	if idx := bytes.IndexByte(s.buf[:bytesread], '\n'); idx > -1 {
-		return clone(s.buf[:idx]), nil
+	if nlidx := bytes.IndexByte(s.buf[:bytesread], '\n'); nlidx > -1 {
+		return clone(s.buf[:nlidx]), nil
 	}
 
 	// No newline found w/EOF is okay - return current buffer
@@ -454,12 +582,75 @@ func (s *Searcher) firstLineFrom(pos int64) ([]byte, error) {
 	return append(current, rest...), nil
 }
 
-// Lines returns all lines in the reader that begin with the byte
-// slice b, using a binary search (data must be bytewise-ordered).
-// Returns an empty slice of byte slices and bsearch.ErrNotFound
-// if no matching line is found, and an empty slice of byte slices
-// and the error on any other error.
-func (s *Searcher) Lines(b []byte) ([][]byte, error) {
+// linesReadNextBlock is a helper function to read the next block and
+// distinguish between eof and other errors, to simplify processing.
+func linesReadNextBlock(r io.ReaderAt, b []byte, pos int64) (bytesread int, eof bool, err error) {
+	bytesread, err = r.ReadAt(b, pos)
+	if err != nil && err == io.EOF {
+		return bytesread, true, nil
+	}
+	if err != nil {
+		return bytesread, false, err
+	}
+	return bytesread, false, nil
+}
+
+// scanCompressedLines returns all lines in s.r from pos that begin
+// with the byte slice b (data must be bytewise-ordered). Differs
+// from scanUnindexedLines by searching the decompressed s.dbuf,
+// rather than the underlying reader, which means it never has to
+// read additional blocks.
+// Returns a slice of byte slices on success, and an empty slice of
+// byte slices and an error on error.
+func (s *Searcher) scanCompressedLines(b []byte) ([][]byte, error) {
+	entry := s.Index.BlockEntry(b)
+	//fmt.Printf("+ index entry for %q found: %d, %d\n", string(b), entry.Offset, entry.Length)
+
+	// Decompress block from entry into s.dbuf
+	err := s.decompressBlockEntry(entry)
+	if err != nil {
+		return [][]byte{}, err
+	}
+	//fmt.Printf("+ block for entry %d decompressed\n", entry.Offset)
+
+	// Scan matching lines
+	lines, err := s.scanLinesMatching(s.dbuf, b)
+	if err != nil {
+		return [][]byte{}, err
+	}
+	return lines, nil
+}
+
+// scanIndexedLines returns all lines in s.r from pos that begin
+// with the byte slice b (data must be bytewise-ordered). Differs
+// from scanUnindexedLines because indexing means it never has to
+// read more than one block, and blocks finish cleanly on newlines.
+// Returns a slice of byte slices on success, and an empty slice of
+// byte slices and an error on error.
+func (s *Searcher) scanIndexedLines(b []byte) ([][]byte, error) {
+	entry := s.Index.BlockEntry(b)
+
+	// Read entry block into s.buf
+	err := s.readBlockEntry(entry)
+	if err != nil {
+		return [][]byte{}, err
+	}
+
+	// Scan matching lines
+	lines, err := s.scanLinesMatching(s.buf, b)
+	if err != nil {
+		return [][]byte{}, err
+	}
+	return lines, nil
+}
+
+// scanUnindexedLines returns all lines in s.r from pos that begin
+// with the byte slice b (data must be bytewise-ordered). Uses a
+// standard blocksize, and may need to read multiple blocks (uses
+// linesReadNextBlock()).
+// Returns a slice of byte slices on success, and an empty slice of
+// byte slices and an error on error.
+func (s *Searcher) scanUnindexedLines(b []byte) ([][]byte, error) {
 	pos, err := s.LinePosition(b)
 	if err != nil {
 		return [][]byte{}, err
@@ -479,8 +670,8 @@ outer:
 		from := 0
 		for {
 			// Find the next newline
-			idx := bytes.IndexByte(s.buf[from:bytesread], '\n')
-			if idx == -1 {
+			nlidx := bytes.IndexByte(s.buf[from:bytesread], '\n')
+			if nlidx == -1 {
 				// No newline found
 				if eof {
 					// EOF w/o newline is okay if we still have a match
@@ -506,8 +697,8 @@ outer:
 				continue
 			}
 
-			// Newline found at idx - check for prefix match
-			line, brk, err := s.checkPrefixMatch(s.buf[from:from+idx], b)
+			// Newline found at nlidx - check for prefix match
+			line, brk, err := s.checkPrefixMatch(s.buf[from:from+nlidx], b)
 			if err != nil {
 				return nil, err
 			}
@@ -518,7 +709,7 @@ outer:
 				lines = append(lines, line)
 			}
 
-			from = from + idx + 1
+			from = from + nlidx + 1
 
 			if from >= bytesread {
 				// If eof flag is set we're done
@@ -542,17 +733,20 @@ outer:
 	return lines, nil
 }
 
-// linesReadNextBlock is a helper function to read the next block and
-// distinguish between eof and other errors, to simplify post-processing
-func linesReadNextBlock(r io.ReaderAt, b []byte, pos int64) (bytesread int, eof bool, err error) {
-	bytesread, err = r.ReadAt(b, pos)
-	if err != nil && err == io.EOF {
-		return bytesread, true, nil
+// Lines returns all lines in the reader that begin with the byte
+// slice b, using a binary search (data must be bytewise-ordered).
+// Returns an empty slice of byte slices and bsearch.ErrNotFound
+// if no matching line is found, and an empty slice of byte slices
+// and the error on any other error.
+func (s *Searcher) Lines(b []byte) ([][]byte, error) {
+	if s.isCompressed() {
+		return s.scanCompressedLines(b)
 	}
-	if err != nil {
-		return bytesread, false, err
+	if s.Index != nil {
+		return s.scanIndexedLines(b)
 	}
-	return bytesread, false, nil
+
+	return s.scanUnindexedLines(b)
 }
 
 // linesViaScanner is an alternative implementation of Lines(),
