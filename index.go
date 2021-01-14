@@ -261,22 +261,23 @@ func NewIndexLoad(filename string) (*Index, error) {
 	return &index, nil
 }
 
-// BlockPosition does a binary search on the block entries in the index List
-// and returns the offset of the last entry with a Key less than b. If no such
-// entry exists, it returns the offset of the first entry. (This matches the
-// main Searcher.BlockPosition semantics, which are conservative because the
-// first block may include a header.)
+// BlockPosition does a binary search on the block entries in the index
+// List and returns the offset of the last entry with a Key less than b.
+// If no such entry exists, it returns the offset of the first entry.
+// (This matches the main Searcher.BlockPosition semantics, which are
+// conservative because the first block may include a header.)
 func (i *Index) BlockPosition(b []byte) (int64, error) {
-	entry := i.BlockEntry(b)
+	_, entry := i.BlockEntry(b)
 	return entry.Offset, nil
 }
 
-// BlockEntry does a binary search on the block entries in the index List
-// and returns the last entry with a Key less than b. If no such entry exists,
-// it returns the first entry. (This matches the main Searcher.BlockPosition
-// semantics, which are conservative because the first block may include a
-// header.)
-func (i *Index) BlockEntry(b []byte) IndexEntry {
+// BlockEntry does a binary search on the block entries in the index
+// List and returns the last entry with a Key less than b, and its
+// position in the List.
+// If no such entry exists, it returns the first entry.
+// (This matches the main Searcher.BlockPosition semantics, which are
+// conservative because the first block may include a header.)
+func (i *Index) BlockEntry(b []byte) (int, IndexEntry) {
 	var begin, mid, end int
 	list := i.List
 	begin = 0
@@ -302,7 +303,16 @@ func (i *Index) BlockEntry(b []byte) IndexEntry {
 		}
 	}
 
-	return list[begin]
+	return begin, list[begin]
+}
+
+// BlockEntryN returns the nth IndexEntry in index.List, and an ok
+// flag, which is false if no entry is found.
+func (i *Index) BlockEntryN(n int) (IndexEntry, bool) {
+	if n < 0 || n >= len(i.List) {
+		return IndexEntry{}, false
+	}
+	return i.List[n], true
 }
 
 // Write writes the index to disk

@@ -1,6 +1,7 @@
 .*.sw?
 .nfs*
 *~
+*.bsx
 
 /DevNotes
 /TODO
@@ -19,5 +20,4 @@
 /pkg/linux_amd64/*
 /pkg/*.*/
 /src/*.*/
-/testdata/rdns1i.bsx.zst
 /var/*

@@ -114,7 +114,7 @@ func main() {
 			break
 		}
 		vprintf("+ lookup %d: %s\n", i, key)
-		lines, err := bss.Lines([]byte(key + opts.Sep))
+		line, err := bss.Line([]byte(key + opts.Sep))
 		if err == bsearch.ErrKeyExceedsBlocksize {
 			if opts.Fatal {
 				fmt.Printf("Error: lookup on %q got ErrKeyExceedsBlocksize\n", key)
@@ -126,10 +126,7 @@ func main() {
 		}
 		val2 := ""
 		if err == nil {
-			if len(lines) > 0 {
-				line := lines[0]
-				val2 = strings.TrimPrefix(string(line), key+opts.Sep)
-			}
+			val2 = strings.TrimPrefix(string(line), key+opts.Sep)
 		}
 		if val != val2 {
 			fmt.Printf("Error: [%d] lookup on %q: got %q, expected %q\n", i, key, val2, val)

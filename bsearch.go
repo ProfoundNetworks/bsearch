@@ -355,20 +355,24 @@ func (s *Searcher) decompressBlockEntry(entry IndexEntry) error {
 
 // scanLineOffset returns the offset of the first line within buf
 // that begins with the byte sequence b.
-// If not found, normally returns -1 and ErrNotFound.
+// If not found, normally returns -1.
 // If not found and the MatchLE flag is set, it returns the last line
 // position with a byte sequence < b.
-func (s *Searcher) scanLineOffset(buf []byte, b []byte) (int, error) {
+// Also returns a terminate flag which is true we have reached a termination
+// condition (e.g. a byte sequence > b).
+func (s *Searcher) scanLineOffset(buf []byte, b []byte) (int, bool) {
 	var trailing int = -1
 	begin := 0
+	terminate := false
 
 	// Scan lines until we find one >= b
-	for {
+	for begin < len(buf) {
 		cmp := s.compare(buf[begin:begin+len(b)], b)
 		//fmt.Fprintf(os.Stderr, "+ comparing %q (begin %d) vs. %q == %d\n", string(buf[begin:begin+len(b)]), begin, string(b), cmp)
 		if cmp == 0 {
-			return begin, nil
+			return begin, false
 		} else if cmp == 1 {
+			terminate = true
 			break
 		}
 
@@ -386,23 +390,29 @@ func (s *Searcher) scanLineOffset(buf []byte, b []byte) (int, error) {
 
 	// If using less-than-or-equal-to semantics, return trailingPosition if that is set
 	if s.matchLE && trailing > -1 {
-		return trailing, nil
+		return trailing, terminate
 	}
 
-	return -1, ErrNotFound
+	return -1, terminate
 }
 
 // scanLinesMatching returns all lines beginning with byte sequence b from buf.
-func (s *Searcher) scanLinesMatching(buf, b []byte) ([][]byte, error) {
+// Also returns a terminate flag which is true we have reached a termination
+// condition (e.g. a byte sequence > b).
+func (s *Searcher) scanLinesMatching(buf, b []byte, maxlines int) ([][]byte, bool) {
 	// Find the offset of the first line in buf beginning with b
-	begin, err := s.scanLineOffset(buf, b)
-	if err != nil {
-		return [][]byte{}, err
+	begin, terminate := s.scanLineOffset(buf, b)
+	if begin == -1 || terminate {
+		return [][]byte{}, terminate
 	}
 	//fmt.Printf("+ line offset for %q in buf: %d\n", string(b), begin)
 
 	var lines [][]byte
 	for begin < len(buf) {
+		if maxlines > 0 && len(lines) >= maxlines {
+			return lines[:maxlines], true
+		}
+
 		nlidx := bytes.IndexByte(buf[begin:], '\n')
 		cmp := s.compare(buf[begin:begin+len(b)], b)
 		//fmt.Printf("+ comparing %q (begin %d, nlidx %d) vs. %q == %d\n", string(buf[begin:begin+len(b)]), begin, nlidx, string(b), cmp)
@@ -415,16 +425,18 @@ func (s *Searcher) scanLinesMatching(buf, b []byte) ([][]byte, error) {
 		}
 		if cmp == 0 {
 			if nlidx == -1 {
-				lines = append(lines, buf[begin:])
+				lines = append(lines, clone(buf[begin:]))
 				break
 			}
-			lines = append(lines, buf[begin:begin+nlidx])
+			lines = append(lines, clone(buf[begin:begin+nlidx]))
 			begin += nlidx + 1
 			continue
 		}
+		// cmp == 1
+		terminate = true
 		break
 	}
-	return lines, nil
+	return lines, terminate
 }
 
 // LinePosition returns the byte offset in the reader for the first line
@@ -552,6 +564,14 @@ outer:
 // Returns an empty byte slice and bsearch.ErrNotFound if no matching line
 // is found, and an empty byte slice and the error on any other error.
 func (s *Searcher) Line(b []byte) ([]byte, error) {
+	lines, err := s.LinesLimited(b, 1)
+	if err != nil || len(lines) < 1 {
+		return []byte{}, err
+	}
+	return lines[0], nil
+}
+
+func (s *Searcher) lineOld(b []byte) ([]byte, error) {
 	pos, err := s.LinePosition(b)
 	if err != nil {
 		return []byte{}, err
@@ -599,52 +619,82 @@ func linesReadNextBlock(r io.ReaderAt, b []byte, pos int64) (bytesread int, eof 
 	return bytesread, false, nil
 }
 
-// scanCompressedLines returns all lines in s.r from pos that begin
-// with the byte slice b (data must be bytewise-ordered). Differs
-// from scanUnindexedLines by searching the decompressed s.dbuf,
-// rather than the underlying reader, which means it never has to
-// read additional blocks.
-// Returns a slice of byte slices on success, and an empty slice of
-// byte slices and an error on error.
-func (s *Searcher) scanCompressedLines(b []byte) ([][]byte, error) {
-	entry := s.Index.BlockEntry(b)
-	//fmt.Printf("+ index entry for %q found: %d, %d\n", string(b), entry.Offset, entry.Length)
+// scanIndexedLines returns all lines in s.r from pos that begin with the
+// byte slice b (data must be bytewise-ordered). Differs from
+// scanUnindexedLines because indexing means blocks finish cleanly on newlines.
+// Returns a slice of byte slices on success, and an empty slice of byte slices
+// and an error on error.
+func (s *Searcher) scanIndexedLines(b []byte, maxlines int) ([][]byte, error) {
+	e, entry := s.Index.BlockEntry(b)
 
-	// Decompress block from entry into s.dbuf
-	err := s.decompressBlockEntry(entry)
-	if err != nil {
-		return [][]byte{}, err
-	}
-	//fmt.Printf("+ block for entry %d decompressed\n", entry.Offset)
+	var lines, l [][]byte
+	var terminate, ok bool
+	// Loop because we may need to read multiple blocks
+	for {
+		// Read entry block into s.buf
+		err := s.readBlockEntry(entry)
+		if err != nil {
+			return [][]byte{}, err
+		}
 
-	// Scan matching lines
-	lines, err := s.scanLinesMatching(s.dbuf, b)
-	if err != nil {
-		return [][]byte{}, err
+		// Scan matching lines
+		l, terminate = s.scanLinesMatching(s.buf, b, maxlines)
+		if len(l) > 0 {
+			lines = append(lines, l...)
+		}
+		if terminate {
+			break
+		}
+
+		entry, ok = s.Index.BlockEntryN(e + 1)
+		if !ok {
+			break
+		}
 	}
+
+	if len(lines) == 0 {
+		return lines, ErrNotFound
+	}
+
 	return lines, nil
 }
 
-// scanIndexedLines returns all lines in s.r from pos that begin
+// scanCompressedLines returns all lines in s.r from pos that begin
 // with the byte slice b (data must be bytewise-ordered). Differs
-// from scanUnindexedLines because indexing means it never has to
-// read more than one block, and blocks finish cleanly on newlines.
+// from scanUnindexedLines by searching the decompressed s.dbuf,
+// rather than the underlying reader, and the index means that blocks
+// always line up nicely on newlines.
 // Returns a slice of byte slices on success, and an empty slice of
 // byte slices and an error on error.
-func (s *Searcher) scanIndexedLines(b []byte) ([][]byte, error) {
-	entry := s.Index.BlockEntry(b)
+func (s *Searcher) scanCompressedLines(b []byte, maxlines int) ([][]byte, error) {
+	e, entry := s.Index.BlockEntry(b)
 
-	// Read entry block into s.buf
-	err := s.readBlockEntry(entry)
-	if err != nil {
-		return [][]byte{}, err
+	var lines, l [][]byte
+	var terminate, ok bool
+	// Loop because we may need to read multiple blocks
+	for {
+		// Decompress block from entry into s.dbuf
+		err := s.decompressBlockEntry(entry)
+		if err != nil {
+			return [][]byte{}, err
+		}
+		//fmt.Printf("+ block for entry %d decompressed\n", entry.Offset)
+
+		// Scan matching lines
+		l, terminate = s.scanLinesMatching(s.dbuf, b, maxlines)
+		if len(l) > 0 {
+			lines = append(lines, l...)
+		}
+		if terminate {
+			break
+		}
+
+		entry, ok = s.Index.BlockEntryN(e + 1)
+		if !ok {
+			break
+		}
 	}
 
-	// Scan matching lines
-	lines, err := s.scanLinesMatching(s.buf, b)
-	if err != nil {
-		return [][]byte{}, err
-	}
 	return lines, nil
 }
 
@@ -654,7 +704,7 @@ func (s *Searcher) scanIndexedLines(b []byte) ([][]byte, error) {
 // linesReadNextBlock()).
 // Returns a slice of byte slices on success, and an empty slice of
 // byte slices and an error on error.
-func (s *Searcher) scanUnindexedLines(b []byte) ([][]byte, error) {
+func (s *Searcher) scanUnindexedLines(b []byte, maxlines int) ([][]byte, error) {
 	pos, err := s.LinePosition(b)
 	if err != nil {
 		return [][]byte{}, err
@@ -737,20 +787,30 @@ outer:
 	return lines, nil
 }
 
+// LinesLimited returns the first maxlines lines in the reader that
+// begin with the byte slice b, using a binary search (data must be
+// bytewise-ordered).
+// Returns an empty slice of byte slices and bsearch.ErrNotFound
+// if no matching line is found, and an empty slice of byte slices
+// and the error on any other error.
+func (s *Searcher) LinesLimited(b []byte, maxlines int) ([][]byte, error) {
+	if s.isCompressed() {
+		return s.scanCompressedLines(b, maxlines)
+	}
+	if s.Index != nil {
+		return s.scanIndexedLines(b, maxlines)
+	}
+
+	return s.scanUnindexedLines(b, maxlines)
+}
+
 // Lines returns all lines in the reader that begin with the byte
 // slice b, using a binary search (data must be bytewise-ordered).
 // Returns an empty slice of byte slices and bsearch.ErrNotFound
 // if no matching line is found, and an empty slice of byte slices
 // and the error on any other error.
 func (s *Searcher) Lines(b []byte) ([][]byte, error) {
-	if s.isCompressed() {
-		return s.scanCompressedLines(b)
-	}
-	if s.Index != nil {
-		return s.scanIndexedLines(b)
-	}
-
-	return s.scanUnindexedLines(b)
+	return s.LinesLimited(b, 0)
 }
 
 // linesViaScanner is an alternative implementation of Lines(),
