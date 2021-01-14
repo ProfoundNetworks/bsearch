@@ -99,26 +99,31 @@ func (s *Searcher) isCompressed() bool {
 
 // NewSearcher returns a new Searcher for the ReaderAt r for data of length bytes,
 // using default options.
-func NewSearcher(r io.ReaderAt, length int64) *Searcher {
-	s := Searcher{r: r, l: length, blocksize: defaultBlocksize, bufOffset: -1, dbufOffset: -1, compare: PrefixCompare}
+func NewSearcher(reader io.ReaderAt, length int64) *Searcher {
+	s := Searcher{
+		r:          reader,
+		l:          length,
+		blocksize:  defaultBlocksize,
+		bufOffset:  -1,
+		dbufOffset: -1,
+		compare:    PrefixCompare,
+	}
 	s.buf = make([]byte, s.blocksize+1) // we read blocksize+1 bytes to check for a preceding newline
 	return &s
 }
 
 // NewSearcherOptions returns a new Searcher for the ReaderAt r for data of length bytes,
 // overriding the default options with those in options.
-func NewSearcherOptions(r io.ReaderAt, length int64, options Options) (*Searcher, error) {
-	s := Searcher{r: r, l: length, blocksize: defaultBlocksize, compare: PrefixCompare}
-
+func NewSearcherOptions(reader io.ReaderAt, length int64, options Options) (*Searcher, error) {
+	s := NewSearcher(reader, length)
 	s.setOptions(options)
-	s.buf = make([]byte, s.blocksize+1) // we read blocksize+1 bytes to check for a preceding newline
 
 	// Return an error if s.indexOpt == IndexRequired|IndexCreate
 	if s.indexOpt == IndexRequired || s.indexOpt == IndexCreate {
 		return nil, errors.New("IndexRequired/IndexCreate options are only supported with NewSearcherFileOptions")
 	}
 
-	return &s, nil
+	return s, nil
 }
 
 // NewSearcherFile returns a new Searcher for filename, using default options.
@@ -142,8 +147,7 @@ func NewSearcherFile(filename string) (*Searcher, error) {
 		return nil, err
 	}
 
-	s := Searcher{r: fh, l: filesize, blocksize: defaultBlocksize, compare: PrefixCompare}
-	s.buf = make([]byte, s.blocksize+1) // we read blocksize+1 bytes to check for a preceding newline
+	s := NewSearcher(fh, filesize)
 
 	// Load index if one exists
 	index, _ := NewIndexLoad(filename)
@@ -151,7 +155,7 @@ func NewSearcherFile(filename string) (*Searcher, error) {
 		s.Index = index
 	}
 
-	return &s, nil
+	return s, nil
 }
 
 // NewSearcherFileOptions returns a new Searcher for filename f, using options.
