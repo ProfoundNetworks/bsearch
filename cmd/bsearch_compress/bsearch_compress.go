@@ -181,7 +181,7 @@ func main() {
 		c += int64(len(dst))
 	}
 	for i, entry := range uidx.List {
-		fmt.Printf("+ [%d] %v\n", i, entry)
+		vprintf("+ [%d] %v\n", i, entry)
 		src := make([]byte, entry.Length)
 		bytesread, err := reader.ReadAt(src, entry.Offset)
 		if err != nil && err != io.EOF {

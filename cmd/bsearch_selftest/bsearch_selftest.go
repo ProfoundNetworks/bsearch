@@ -93,6 +93,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if bss.Index != nil {
+		if bss.Index.Header {
+			opts.Header = true
+		}
+		vprintf("+ using index %s\n", bsearch.IndexPath(opts.Args.Filename))
+	}
 
 	// Load opts.Args.Filename as a CSV map
 	cmap := loadCSVMap(opts.Args.Filename, opts.Sep, opts.Header)
@@ -107,6 +113,7 @@ func main() {
 		if opts.Count > 0 && i >= opts.Count {
 			break
 		}
+		vprintf("+ lookup %d: %s\n", i, key)
 		lines, err := bss.Lines([]byte(key + opts.Sep))
 		if err == bsearch.ErrKeyExceedsBlocksize {
 			if opts.Fatal {
@@ -124,21 +131,21 @@ func main() {
 				val2 = strings.TrimPrefix(string(line), key+opts.Sep)
 			}
 		}
-		vprintf("+ [%d] %q => got %q / exp %q\n", i, key, val2, val)
 		if val != val2 {
-			fmt.Printf("Error: lookup on %q: got %q, expected %q\n", key, val2, val)
+			fmt.Printf("Error: [%d] lookup on %q: got %q, expected %q\n", i, key, val2, val)
 			if opts.Fatal {
 				os.Exit(2)
 			}
 			fail++
 		} else {
+			//vprintf("+ [%d] %q => got %q / exp %q\n", i, key, val2, val)
 			ok++
 		}
 		i++
 	}
 	total := ok + fail + eleb
 	if fail > 0 || eleb > 0 {
-		fmt.Printf("%d / %d checks failed, %d / %d eleb errors, %d / %d check ok\n", fail, total, eleb, total, ok, total)
+		fmt.Printf("%d / %d checks failed, %d / %d eleb errors, %d / %d checks ok\n", fail, total, eleb, total, ok, total)
 	} else {
 		fmt.Printf("%d / %d checks ok\n", ok, total)
 	}
