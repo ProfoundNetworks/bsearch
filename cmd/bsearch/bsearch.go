@@ -3,13 +3,10 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"regexp"
-	"strings"
 
 	"github.com/ProfoundNetworks/bsearch"
 	flags "github.com/jessevdk/go-flags"
@@ -56,7 +53,7 @@ func main() {
 	log.SetFlags(0)
 
 	// Die if Filename looks compressed
-	re := regexp.MustCompile(`\.(gz|bz2|zst|br)$`)
+	re := regexp.MustCompile(`\.(gz|bz2|br)$`)
 	if re.MatchString(opts.Args.Filename) {
 		fmt.Fprintf(os.Stderr, "Filename %q appears to be compressed - cannot binary search\n", opts.Args.Filename)
 		os.Exit(2)
@@ -68,32 +65,16 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if bss.Index != nil {
+		vprintf("+ using index %s\n", bsearch.IndexPath(opts.Args.Filename))
+	}
 
-	// Search
 	searchStr := opts.Args.SearchString
 	if opts.Rev {
 		searchStr = reverse(searchStr)
 	}
-	//vprintf("+ searchStr: %q\n", searchStr)
 
-	/*
-		posn, err := bss.LinePosition([]byte(searchStr))
-		if err != nil && err == bsearch.ErrNotFound {
-			// Not found
-			if opts.Verbose {
-				log.Println("Not found")
-			}
-			os.Exit(1)
-		} else if err != nil {
-			// General error
-			log.Fatal(err)
-		}
-		//vprintf("+ bsearch.LinePosition: %d\n", posn)
-
-		reader := bss.Reader()
-		results := getLinesViaScanner(reader, posn, searchStr)
-	*/
-
+	// Search
 	results, err := bss.Lines([]byte(searchStr))
 	if err != nil {
 		log.Fatal(err)
@@ -107,48 +88,6 @@ func main() {
 		}
 		fmt.Println(line)
 	}
-}
-
-func getLinesViaScanner(reader io.ReaderAt, posn int64, searchStr string) []string {
-	p, err := reader.(io.ReadSeeker).Seek(posn, io.SeekStart)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if p != posn {
-		log.Fatalf("seek returned unexpected position: %d != expected %d\n", p, posn)
-	}
-
-	// Scan all lines that match
-	scanner := bufio.NewScanner(reader.(io.Reader))
-	//searchStringLen := len(searchStr)
-	var results []string
-	for scanner.Scan() {
-		line := scanner.Text()
-		//vprintf("+ line: %s\n", line)
-		if strings.HasPrefix(line, searchStr) {
-			// If --delim is set, the next character in line after searchStr must be in opts.Delim
-			// (or the end of the string)
-			/*
-				if opts.Delim != "" {
-					if len(line) > searchStringLen {
-						next := line[searchStringLen : searchStringLen+1]
-						if !strings.ContainsAny(next, opts.Delim) {
-							continue
-						}
-					}
-				}
-			*/
-			if opts.Rev {
-				line = reverse(line)
-			}
-			results = append(results, line)
-		} else if line > searchStr {
-			// If line > searchStr we're done
-			break
-		}
-	}
-
-	return results
 }
 
 // reverse returns its argument string reversed rune-wise left to right.
