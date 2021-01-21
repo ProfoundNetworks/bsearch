@@ -17,6 +17,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -31,6 +32,7 @@ var (
 	ErrNotFound            = errors.New("not found")
 	ErrKeyExceedsBlocksize = errors.New("key length exceeds blocksize")
 	ErrNotFile             = errors.New("filename exists but is not a file")
+	ErrCompressedNoIndex   = errors.New("compressed file without an index file")
 )
 
 var reCompressed = regexp.MustCompile(`\.zst$`)
@@ -53,6 +55,7 @@ type Searcher struct {
 	bufOffset  int64                 // data buffer offset
 	dbuf       []byte                // decompressed data buffer
 	dbufOffset int64                 // decompressed data buffer offset
+	Filename   string                // file basename, if given
 	indexOpt   IndexSemantics        // index option: 1=Require, 2=Create, 3=None
 	Index      *Index                // optional block index
 	compare    func(a, b []byte) int // prefix comparison function
@@ -88,13 +91,19 @@ func (s *Searcher) setOptions(options Options) {
 // isCompressed returns true if there is an underlying file that is compressed
 // (and which also requires we have an associated index).
 func (s *Searcher) isCompressed() bool {
-	if s.Index == nil {
+	if s.Filename == "" && s.Index == nil {
 		return false
 	}
-	if !reCompressed.MatchString(s.Index.Filename) {
+	if s.Filename != "" {
+		if reCompressed.MatchString(s.Filename) {
+			return true
+		}
 		return false
 	}
-	return true
+	if reCompressed.MatchString(s.Index.Filename) {
+		return true
+	}
+	return false
 }
 
 // NewSearcher returns a new Searcher for the ReaderAt r for data of length bytes,
@@ -148,6 +157,7 @@ func NewSearcherFile(filename string) (*Searcher, error) {
 	}
 
 	s := NewSearcher(fh, filesize)
+	s.Filename = filepath.Base(filename)
 
 	// Load index if one exists
 	index, _ := NewIndexLoad(filename)
@@ -795,13 +805,18 @@ outer:
 // and the error on any other error.
 func (s *Searcher) LinesLimited(b []byte, maxlines int) ([][]byte, error) {
 	if s.isCompressed() {
+		if s.Index == nil {
+			return [][]byte{}, ErrCompressedNoIndex
+		}
 		return s.scanCompressedLines(b, maxlines)
 	}
-	if s.Index != nil {
-		return s.scanIndexedLines(b, maxlines)
+
+	if s.Index == nil {
+		return s.scanUnindexedLines(b, maxlines)
 	}
 
-	return s.scanUnindexedLines(b, maxlines)
+	return s.scanIndexedLines(b, maxlines)
+
 }
 
 // Lines returns all lines in the reader that begin with the byte

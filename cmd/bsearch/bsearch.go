@@ -77,7 +77,10 @@ func main() {
 	// Search
 	results, err := bss.Lines([]byte(searchStr))
 	if err != nil {
-		log.Fatal(err)
+		if err == bsearch.ErrCompressedNoIndex {
+			log.Fatal("Error: compressed dataset without index - recompress using bsearch_compress.\n")
+		}
+		log.Fatalf("Error: %s\n", err)
 	}
 	for _, l := range results {
 		var line string
