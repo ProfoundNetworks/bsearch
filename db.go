@@ -23,7 +23,7 @@ func NewDB(filename, separator string) (*DB, error) {
 		return nil, errors.New("NewDB separator cannot be an empty string")
 	}
 
-	bss, err := NewSearcherFile(filename)
+	bss, err := NewSearcher(filename)
 	if err != nil {
 		return nil, err
 	}

@@ -1,7 +1,11 @@
 /*
 bsearch selftest utility to load a bsearch CSV dataset and then do
 opts.Count random lookups on keys, checking each result.
+
 Assumes keys are unique i.e. one line exists per key.
+
+Loads the test dataset into a map in memory, so needs sufficient
+memory for that.
 */
 
 package main
@@ -89,7 +93,7 @@ func main() {
 
 	// Instantiate a bsearch.Searcher
 	bso := bsearch.Options{Header: opts.Header, Index: idxopt}
-	bss, err := bsearch.NewSearcherFileOptions(opts.Args.Filename, bso)
+	bss, err := bsearch.NewSearcherOptions(opts.Args.Filename, bso)
 	if err != nil {
 		log.Fatal(err)
 	}

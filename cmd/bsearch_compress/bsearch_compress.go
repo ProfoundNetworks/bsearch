@@ -187,7 +187,7 @@ func main() {
 		if err != nil && err != io.EOF {
 			log.Fatal(err)
 		}
-		if bytesread != entry.Length {
+		if int64(bytesread) != entry.Length {
 			log.Fatalf("Error: short read for entry %v - only %d bytes read\n", entry, bytesread)
 		}
 		dst, err := compress(src)
@@ -200,7 +200,7 @@ func main() {
 		}
 		// Update compressed index entry
 		zidx.List[i].Offset = c
-		zidx.List[i].Length = len(dst)
+		zidx.List[i].Length = int64(len(dst))
 		c += int64(len(dst))
 	}
 	err = writer.Close()
