@@ -1,5 +1,5 @@
 /*
-Index provides an optional bsearch index implementation.
+Index provides an index implementation for bsearch.
 
 The index file is a zstd-compressed yaml file. It has the same name and
 location as the associated dataset, but with all '.' characters changed
@@ -166,6 +166,7 @@ func deriveDelimiter(filename string) byte {
 	if reTSV.MatchString(filename) {
 		return tabDelimiter
 	}
+	// Default to the nullDelimiter
 	return nullDelimiter
 }
 
