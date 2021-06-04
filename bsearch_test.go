@@ -2,7 +2,6 @@ package bsearch
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 )
@@ -31,11 +30,11 @@ func TestBlockPosition1(t *testing.T) {
 		{"255.255.255.255", 241664}, // does not exist
 	}
 
-	s, err := NewSearcherFile("testdata/rdns1.csv")
+	s, err := NewSearcher("testdata/rdns1.csv")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close() // required for NewSearcherFile
+	defer s.Close()
 
 	for _, tc := range tests {
 		pos, err := s.BlockPosition([]byte(tc.key))
@@ -66,14 +65,12 @@ func TestBlockPosition2(t *testing.T) {
 		{"255.255.255.255", 245760}, // does not exist
 	}
 
-	r, l := open(t, "testdata/rdns2.csv")
-
 	o := Options{Blocksize: 8192, Compare: PrefixCompareString}
-	s, err := NewSearcherOptions(r, l, o)
+	s, err := NewSearcherOptions("testdata/rdns2.csv", o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close() // noop - test
+	defer s.Close()
 
 	for _, tc := range tests {
 		pos, err := s.BlockPosition([]byte(tc.key))
@@ -112,11 +109,11 @@ func TestBlockPosition3(t *testing.T) {
 	}
 
 	o := Options{Index: IndexCreate}
-	s, err := NewSearcherFileOptions("testdata/rdns1i.csv", o)
+	s, err := NewSearcherOptions("testdata/rdns1i.csv", o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close() // required for NewSearcherFile
+	defer s.Close()
 
 	for _, tc := range tests {
 		pos, err := s.BlockPosition([]byte(tc.key))
@@ -149,9 +146,11 @@ func TestLinePosition1(t *testing.T) {
 		{"255.255.255.255", -1},     // does not exist
 	}
 
-	r, l := open(t, "testdata/rdns1.csv")
-
-	s := NewSearcher(r, l)
+	s, err := NewSearcher("testdata/rdns1.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
 
 	for _, tc := range tests {
 		pos, err := s.LinePosition([]byte(tc.key))
@@ -179,11 +178,11 @@ func TestLine1(t *testing.T) {
 		{"223.252.003.000", "223.252.003.000,223-252-3-0.as45671.net,202003,as45671.net"},
 	}
 
-	s, err := NewSearcherFile("testdata/rdns1.csv")
+	s, err := NewSearcher("testdata/rdns1.csv")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close() // required for NewSearcherFile
+	defer s.Close()
 
 	for _, tc := range tests {
 		line, err := s.Line([]byte(tc.key))
@@ -213,11 +212,11 @@ func TestLine2(t *testing.T) {
 		{"zzz.com", ""},
 	}
 
-	s, err := NewSearcherFile("testdata/domains1.csv")
+	s, err := NewSearcher("testdata/domains1.csv")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close() // required for NewSearcherFile
+	defer s.Close()
 
 	for _, tc := range tests {
 		line, err := s.Line([]byte(tc.key))
@@ -250,11 +249,11 @@ func TestLine3(t *testing.T) {
 	}
 
 	o := Options{Header: true}
-	s, err := NewSearcherFileOptions("testdata/domains2.csv", o)
+	s, err := NewSearcherOptions("testdata/domains2.csv", o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close() // required for NewSearcherFile
+	defer s.Close()
 
 	for _, tc := range tests {
 		line, err := s.Line([]byte(tc.key))
@@ -284,11 +283,11 @@ func TestLine4(t *testing.T) {
 		{"223.252.003.000", "223.252.003.000,223-252-3-0.as45671.net,202003,as45671.net"},
 	}
 
-	s, err := NewSearcherFile("testdata/rdns1i.csv")
+	s, err := NewSearcher("testdata/rdns1i.csv")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close() // required for NewSearcherFile
+	defer s.Close()
 
 	for _, tc := range tests {
 		line, err := s.Line([]byte(tc.key))
@@ -335,11 +334,11 @@ alstom.com.br,alstom.com,RED
 	}
 
 	o := Options{Header: false}
-	s, err := NewSearcherFileOptions("testdata/alstom.csv", o)
+	s, err := NewSearcherOptions("testdata/alstom.csv", o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close() // required for NewSearcherFile
+	defer s.Close()
 
 	for _, tc := range tests {
 		lines, err := s.Lines([]byte(tc.key))
@@ -393,11 +392,11 @@ alstom.com.br,alstom.com,RED
 	}
 
 	o := Options{Header: true}
-	s, err := NewSearcherFileOptions("testdata/alstom2.csv", o)
+	s, err := NewSearcherOptions("testdata/alstom2.csv", o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close() // required for NewSearcherFile
+	defer s.Close()
 
 	for _, tc := range tests {
 		lines, err := s.Lines([]byte(tc.key))
@@ -428,11 +427,11 @@ func TestLinesMultiBlock1(t *testing.T) {
 	}
 
 	o := Options{Header: true}
-	s, err := NewSearcherFileOptions("testdata/alstom3.csv", o)
+	s, err := NewSearcherOptions("testdata/alstom3.csv", o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close() // required for NewSearcherFile
+	defer s.Close()
 
 	for _, tc := range tests {
 		lines, err := s.Lines([]byte(tc.key))
@@ -441,6 +440,10 @@ func TestLinesMultiBlock1(t *testing.T) {
 				t.Fatalf("%s: %s\n", tc.key, err.Error())
 			}
 		}
+		//fmt.Println("+ lines:")
+		//for _, line := range lines {
+		//	fmt.Printf("  %s\n", string(line))
+		//}
 		if string(lines[0]) != tc.first_line {
 			t.Errorf("%q => first line %q\n   expected %q\n", tc.key, lines[0], tc.first_line)
 		}
@@ -461,11 +464,11 @@ func TestLinesMultiBlock2(t *testing.T) {
 	}
 
 	o := Options{Header: true}
-	s, err := NewSearcherFileOptions("testdata/alstom4.csv", o)
+	s, err := NewSearcherOptions("testdata/alstom4.csv", o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close() // required for NewSearcherFile
+	defer s.Close()
 
 	for _, tc := range tests {
 		lines, err := s.Lines([]byte(tc.key))
@@ -494,11 +497,11 @@ func TestLinesMultiBlock3(t *testing.T) {
 	}
 
 	o := Options{Header: false}
-	s, err := NewSearcherFileOptions("testdata/foo.csv", o)
+	s, err := NewSearcherOptions("testdata/foo.csv", o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close() // required for NewSearcherFile
+	defer s.Close()
 
 	for _, tc := range tests {
 		lines, err := s.Lines([]byte(tc.key))
@@ -506,6 +509,9 @@ func TestLinesMultiBlock3(t *testing.T) {
 			if err != ErrNotFound {
 				t.Fatalf("%s: %s\n", tc.key, err.Error())
 			}
+		}
+		if len(lines) == 0 {
+			t.Fatalf("%s: no lines returned\n", tc.key)
 		}
 		if string(lines[0]) != tc.first_line {
 			t.Errorf("%q => first line %q\n   expected %q\n", tc.key, lines[0], tc.first_line)
@@ -536,11 +542,11 @@ alstom.com.br,alstom.com,RED
 	}
 
 	o := Options{Header: true, Boundary: true}
-	s, err := NewSearcherFileOptions("testdata/alstom2.csv", o)
+	s, err := NewSearcherOptions("testdata/alstom2.csv", o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close() // required for NewSearcherFile
+	defer s.Close()
 
 	for _, tc := range tests {
 		lines, err := s.Lines([]byte(tc.key))
@@ -580,11 +586,11 @@ ac.101gnitekrametailiffa.stcatnocpc
 	}
 
 	o := Options{Header: true, Boundary: true}
-	s, err := NewSearcherFileOptions("testdata/ca_rev.txt", o)
+	s, err := NewSearcherOptions("testdata/ca_rev.txt", o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close() // required for NewSearcherFile
+	defer s.Close()
 
 	for _, tc := range tests {
 		lines, err := s.Lines([]byte(tc.key))
@@ -632,11 +638,11 @@ func TestMatchLE(t *testing.T) {
 	}
 
 	o := Options{MatchLE: true}
-	s, err := NewSearcherFileOptions("testdata/rdns1.csv", o)
+	s, err := NewSearcherOptions("testdata/rdns1.csv", o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close() // required for NewSearcherFile
+	defer s.Close()
 
 	for _, tc := range tests {
 		pos, err := s.LinePosition([]byte(tc.key))
@@ -649,27 +655,13 @@ func TestMatchLE(t *testing.T) {
 	}
 }
 
-// Helper if not using NewSearcherFile
-func open(t *testing.T, filename string) (fh *os.File, length int64) {
-	fh, err := os.Open(filename)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	fileinfo, err := fh.Stat()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return fh, fileinfo.Size()
-}
-
 // Benchmark Lines()
 func BenchmarkLines(b *testing.B) {
-	bss, err := NewSearcherFile("testdata/rdns1.csv")
+	bss, err := NewSearcher("testdata/rdns1.csv")
 	if err != nil {
 		b.Fatal(err)
 	}
+	defer bss.Close()
 	prefix := []byte("162.")
 	for i := 0; i < b.N; i++ {
 		lines, err := bss.Lines(prefix)
@@ -684,10 +676,11 @@ func BenchmarkLines(b *testing.B) {
 
 // Benchmark LinesViaScanner()
 func BenchmarkLinesViaScanner(b *testing.B) {
-	bss, err := NewSearcherFile("testdata/rdns1.csv")
+	bss, err := NewSearcher("testdata/rdns1.csv")
 	if err != nil {
 		b.Fatal(err)
 	}
+	defer bss.Close()
 	prefix := []byte("162.")
 	for i := 0; i < b.N; i++ {
 		lines, err := bss.linesViaScanner(prefix)

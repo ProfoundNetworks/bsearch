@@ -47,7 +47,7 @@ func loadDataBlock(reader io.ReadCloser, entry *bsearch.IndexEntry, compressed b
 	if err != nil && err != io.EOF {
 		return buf, err
 	}
-	if bytesread < entry.Length {
+	if int64(bytesread) < entry.Length {
 		return buf, fmt.Errorf("error reading block - read %d bytes, expected %d\n", bytesread, entry.Length)
 	}
 
@@ -80,7 +80,7 @@ func main() {
 
 	// Instantiate a bsearch.Searcher
 	bso := bsearch.Options{Index: bsearch.IndexRequired}
-	bss, err := bsearch.NewSearcherFileOptions(opts.Args.Filename, bso)
+	bss, err := bsearch.NewSearcherOptions(opts.Args.Filename, bso)
 	if err != nil {
 		log.Fatal(err)
 	}

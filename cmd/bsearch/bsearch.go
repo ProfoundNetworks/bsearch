@@ -61,7 +61,7 @@ func main() {
 
 	// Instantiate searcher
 	o := bsearch.Options{Header: opts.Header, Boundary: opts.Boundary}
-	bss, err := bsearch.NewSearcherFileOptions(opts.Args.Filename, o)
+	bss, err := bsearch.NewSearcherOptions(opts.Args.Filename, o)
 	if err != nil {
 		log.Fatal(err)
 	}
