@@ -22,6 +22,7 @@ import (
 // Options
 var opts struct {
 	Verbose bool `short:"v" long:"verbose" description:"display verbose debug output"`
+	Delim   byte `short:"t" long:"sep"     description:"separator/delimiter character" default:"1"`
 	Force   bool `short:"f" long:"force"   description:"force index generation even if up-to-date"`
 	Cat     bool `short:"c" long:"cat"     description:"write generated index to stdout instead of to file"`
 	Args    struct {
@@ -80,7 +81,7 @@ func main() {
 	}
 
 	// Generate and write index
-	index, err := bsearch.NewIndex(opts.Args.Filename)
+	index, err := bsearch.NewIndexDelim(opts.Args.Filename, opts.Delim)
 	if err != nil {
 		log.Fatal(err)
 	}
