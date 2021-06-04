@@ -44,14 +44,14 @@ var (
 type IndexEntry struct {
 	Key    string `yaml:"k"`
 	Offset int64  `yaml:"o"`
-	Length int    `yaml:"l"`
+	Length int64  `yaml:"l"`
 }
 
 type Index struct {
-	Delimiter string       `yaml:"delim"`
+	Delimiter byte         `yaml:"delim"`
 	Epoch     int64        `yaml:"epoch"`
-	Filename  string       `yaml:"filename"`
 	Filedir   string       `yaml:"filedir"`
+	Filename  string       `yaml:"filename"`
 	Header    bool         `yaml:"header"`
 	List      []IndexEntry `yaml:"list"`
 }
@@ -80,7 +80,7 @@ func IndexPath(filename string) string {
 
 // processBlock processes the block in buf[:bytesread] and returns an IndexEntry
 // for the first line it finds.
-func processBlock(reader io.ReaderAt, buf []byte, bytesread int, blockPosition int64, delim string, eof bool) (IndexEntry, error) {
+func processBlock(reader io.ReaderAt, buf []byte, bytesread int, blockPosition int64, delim byte, eof bool) (IndexEntry, error) {
 	var err error
 	nlidx := -1
 
@@ -99,7 +99,7 @@ func processBlock(reader io.ReaderAt, buf []byte, bytesread int, blockPosition i
 	}
 
 	// Find delimiter
-	didx := bytes.IndexByte(buf[nlidx+1:bytesread], byte(delim[0]))
+	didx := bytes.IndexByte(buf[nlidx+1:bytesread], delim)
 	if didx == -1 {
 		// If no delimiter is found in block, re-read from nlidx
 		if nlidx == -1 {
@@ -123,10 +123,7 @@ func processBlock(reader io.ReaderAt, buf []byte, bytesread int, blockPosition i
 	entry := IndexEntry{}
 	entry.Key = string(buf[nlidx+1 : didx])
 	entry.Offset = blockPosition + int64(nlidx) + 1
-	// We only set entry.Length for the last block in the file
-	if eof {
-		entry.Length = bytesread - nlidx - 1
-	}
+	entry.Length = int64(bytesread - nlidx - 1)
 
 	// On the first block only, check for the presence of a header
 	if blockPosition == 0 {
@@ -165,7 +162,7 @@ func NewIndex(filename string) (*Index, error) {
 
 	index := Index{}
 	// index.Collation = "C"
-	index.Delimiter = ","
+	index.Delimiter = ','
 	index.Epoch = epoch
 	index.Filename = filepath.Base(filename)
 	index.Filedir = filedir
@@ -189,7 +186,7 @@ func NewIndex(filename string) (*Index, error) {
 				return nil, err
 			}
 			// Check that all entry keys are sorted as we expect
-			if prevKey < entry.Key {
+			if prevKey <= entry.Key {
 				list = append(list, entry)
 			} else if prevKey > entry.Key {
 				return nil, fmt.Errorf("Error: key sort violation - %q > %q\n", prevKey, entry.Key)
@@ -208,9 +205,10 @@ func NewIndex(filename string) (*Index, error) {
 		firstBlock = false
 	}
 
-	// Set (all but the last) entry lengths
+	// Reset all but the last entry lengths (this gives us blocks that finish cleanly
+	// on newlines)
 	for i := 0; i < len(list)-1; i++ {
-		list[i].Length = int(list[i+1].Offset - list[i].Offset)
+		list[i].Length = list[i+1].Offset - list[i].Offset
 	}
 
 	// Output
@@ -274,7 +272,7 @@ func (i *Index) BlockPosition(b []byte) (int64, error) {
 // BlockEntry does a binary search on the block entries in the index
 // List and returns the last entry with a Key less than b, and its
 // position in the List.
-// If no such entry exists, it returns the first entry.
+// FIXME: If no such entry exists, it returns the first entry.
 // (This matches the main Searcher.BlockPosition semantics, which are
 // conservative because the first block may include a header.)
 func (i *Index) BlockEntry(b []byte) (int, IndexEntry) {
@@ -282,6 +280,11 @@ func (i *Index) BlockEntry(b []byte) (int, IndexEntry) {
 	list := i.List
 	begin = 0
 	end = len(list) - 1
+
+	// Remove final byte of `b` if it is our delimiter
+	if b[len(b)-1] == i.Delimiter {
+		b = b[:len(b)-1]
+	}
 
 	for end-begin > 0 {
 		mid = ((end - begin) / 2) + begin
@@ -306,8 +309,8 @@ func (i *Index) BlockEntry(b []byte) (int, IndexEntry) {
 	return begin, list[begin]
 }
 
-// BlockEntryN returns the nth IndexEntry in index.List, and an ok
-// flag, which is false if no entry is found.
+// BlockEntryN returns the nth IndexEntry in index.List, and an ok flag,
+// which is false if no entry is found.
 func (i *Index) BlockEntryN(n int) (IndexEntry, bool) {
 	if n < 0 || n >= len(i.List) {
 		return IndexEntry{}, false

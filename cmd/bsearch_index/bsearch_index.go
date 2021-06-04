@@ -16,12 +16,14 @@ import (
 
 	"github.com/ProfoundNetworks/bsearch"
 	flags "github.com/jessevdk/go-flags"
+	yaml "gopkg.in/yaml.v3"
 )
 
 // Options
 var opts struct {
 	Verbose bool `short:"v" long:"verbose" description:"display verbose debug output"`
-	Force   bool `short:"f" long:"force" description:"force index generation even if up-to-date"`
+	Force   bool `short:"f" long:"force"   description:"force index generation even if up-to-date"`
+	Cat     bool `short:"c" long:"cat"     description:"write generated index to stdout instead of to file"`
 	Args    struct {
 		Filename string
 	} `positional-args:"yes" required:"yes"`
@@ -69,7 +71,7 @@ func main() {
 	}
 
 	// Noop if a valid index already exists (unless --force is specified)
-	if !opts.Force {
+	if !opts.Force && !opts.Cat {
 		_, err = bsearch.NewIndexLoad(opts.Args.Filename)
 		if err == nil {
 			vprintf("+ index file found and up to date\n")
@@ -82,6 +84,18 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// Output to stdout if --cat specified
+	if opts.Cat {
+		data, err := yaml.Marshal(index)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Print(string(data))
+		os.Exit(0)
+	}
+
+	// Write index to file
 	err = index.Write()
 	if err != nil {
 		log.Fatal(err)
