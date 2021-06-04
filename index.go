@@ -83,7 +83,7 @@ func IndexPath(filename string) string {
 
 // processBlock processes the block in buf[:bytesread] and returns an IndexEntry
 // for the first line it finds.
-func processBlock(reader io.ReaderAt, buf []byte, bytesread int, blockPosition int64, delim byte, eof bool) (IndexEntry, error) {
+func processBlock(reader io.ReaderAt, buf []byte, bytesread int, blockPosition int64, delim byte, eof bool) (IndexEntry, int64, error) {
 	var err error
 	nlidx := -1
 
@@ -95,7 +95,7 @@ func processBlock(reader io.ReaderAt, buf []byte, bytesread int, blockPosition i
 			blockPosition += int64(bytesread)
 			bytesread, err = reader.ReadAt(buf, blockPosition)
 			if err != nil && err != io.EOF {
-				return IndexEntry{}, err
+				return IndexEntry{}, blockPosition, err
 			}
 			return processBlock(reader, buf, bytesread, blockPosition, delim, err == io.EOF)
 		}
@@ -110,12 +110,12 @@ func processBlock(reader io.ReaderAt, buf []byte, bytesread int, blockPosition i
 	if didx == -1 {
 		// If no delimiter is found in block, assume we have a partial line, and re-read from nlidx
 		if nlidx == -1 {
-			return IndexEntry{}, ErrKeyExceedsBlocksize
+			return IndexEntry{}, blockPosition, ErrKeyExceedsBlocksize
 		}
 		blockPosition += int64(nlidx)
 		bytesread, err = reader.ReadAt(buf, blockPosition)
 		if err != nil && err != io.EOF {
-			return IndexEntry{}, err
+			return IndexEntry{}, blockPosition, err
 		}
 		return processBlock(reader, buf, bytesread, blockPosition, delim, err == io.EOF)
 	}
@@ -123,7 +123,7 @@ func processBlock(reader io.ReaderAt, buf []byte, bytesread int, blockPosition i
 
 	// Check that there's no newline in this chunk
 	if nlidx2 := bytes.IndexByte(buf[nlidx+1:didx], '\n'); nlidx2 != -1 {
-		return IndexEntry{}, fmt.Errorf("Error: line without delimiter found:\n%s\n", string(buf[nlidx+1:nlidx2]))
+		return IndexEntry{}, blockPosition, fmt.Errorf("Error: line without delimiter found:\n%s\n", string(buf[nlidx+1:nlidx2]))
 	}
 
 	// Create entry
@@ -137,19 +137,19 @@ func processBlock(reader io.ReaderAt, buf []byte, bytesread int, blockPosition i
 		nlidx = bytes.IndexByte(buf[:bytesread], '\n')
 		if nlidx == -1 {
 			// Corner case - no newline found in block
-			return IndexEntry{}, errors.New("Missing first block nlidx handling not yet implemented")
+			return IndexEntry{}, blockPosition, errors.New("Missing first block nlidx handling not yet implemented")
 		}
-		entry2, err := processBlock(reader, buf[nlidx:bytesread], bytesread-(nlidx), blockPosition+int64(nlidx), delim, eof)
+		entry2, bp2, err := processBlock(reader, buf[nlidx:bytesread], bytesread-(nlidx), blockPosition+int64(nlidx), delim, eof)
 		if err != nil {
-			return IndexEntry{}, err
+			return IndexEntry{}, blockPosition + int64(nlidx), err
 		}
 		// If the entry.Key > entry2.Key, assume the first is a header
 		if entry.Key > entry2.Key {
-			return entry2, nil
+			return entry2, bp2, nil
 		}
 	}
 
-	return entry, nil
+	return entry, blockPosition, nil
 }
 
 // deriveDelimiter guesses an appropriate delimiter from filename
@@ -206,26 +206,31 @@ func NewIndexDelim(filename string, delim byte) (*Index, error) {
 	list := []IndexEntry{}
 	var blockPosition int64 = 0
 	firstBlock := true
-	prevKey := ""
-	var entry IndexEntry
+	var entry, prev IndexEntry
 	for {
 		bytesread, err := reader.ReadAt(buf, blockPosition)
 		if err != nil && err != io.EOF {
 			return nil, err
 		}
 		if bytesread > 0 {
-			entry, err = processBlock(reader, buf, bytesread, blockPosition, index.Delimiter, err == io.EOF)
+			entry, blockPosition, err = processBlock(reader, buf, bytesread, blockPosition, index.Delimiter, err == io.EOF)
 			if err != nil {
 				return nil, err
 			}
 			// Check that all entry keys are sorted as we expect
-			if prevKey <= entry.Key {
-				list = append(list, entry)
-			} else if prevKey > entry.Key {
-				return nil, fmt.Errorf("Error: key sort violation - %q > %q\n", prevKey, entry.Key)
+			if prev.Key <= entry.Key {
+				if prev.Key == entry.Key && prev.Offset == entry.Offset {
+					fmt.Fprintf(os.Stderr, "Warning: duplicate index entry found - skipping\n%v\n%v\n",
+						prev, entry)
+				} else {
+					list = append(list, entry)
+				}
+			} else if prev.Key > entry.Key {
+				return nil, fmt.Errorf("Error: key sort violation - %q > %q\n",
+					prev.Key, entry.Key)
 			}
-			// Set prevKey and blockPosition
-			prevKey = entry.Key
+			// Set prev and blockPosition
+			prev = entry
 			blockPosition += int64(bytesread)
 			// If the first offset is not zero we've skipped a header
 			if firstBlock && entry.Offset > 0 {
