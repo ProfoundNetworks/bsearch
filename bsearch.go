@@ -17,7 +17,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -55,7 +54,7 @@ type Searcher struct {
 	bufOffset  int64                 // data buffer offset
 	dbuf       []byte                // decompressed data buffer
 	dbufOffset int64                 // decompressed data buffer offset
-	Filename   string                // file basename, if given
+	filepath   string                // filename path
 	indexOpt   IndexSemantics        // index option: 1=Require, 2=Create, 3=None
 	Index      *Index                // optional block index
 	compare    func(a, b []byte) int // prefix comparison function
@@ -91,11 +90,11 @@ func (s *Searcher) setOptions(options Options) {
 // isCompressed returns true if there is an underlying file that is compressed
 // (and which also requires we have an associated index).
 func (s *Searcher) isCompressed() bool {
-	if s.Filename == "" && s.Index == nil {
+	if s.filepath == "" && s.Index == nil {
 		return false
 	}
-	if s.Filename != "" {
-		if reCompressed.MatchString(s.Filename) {
+	if s.filepath != "" {
+		if reCompressed.MatchString(s.filepath) {
 			return true
 		}
 		return false
@@ -106,40 +105,11 @@ func (s *Searcher) isCompressed() bool {
 	return false
 }
 
-// NewSearcher returns a new Searcher for the ReaderAt r for data of length bytes,
-// using default options.
-func NewSearcher(reader io.ReaderAt, length int64) *Searcher {
-	s := Searcher{
-		r:          reader,
-		l:          length,
-		blocksize:  defaultBlocksize,
-		bufOffset:  -1,
-		dbufOffset: -1,
-		compare:    PrefixCompare,
-	}
-	s.buf = make([]byte, s.blocksize+1) // we read blocksize+1 bytes to check for a preceding newline
-	return &s
-}
-
-// NewSearcherOptions returns a new Searcher for the ReaderAt r for data of length bytes,
-// overriding the default options with those in options.
-func NewSearcherOptions(reader io.ReaderAt, length int64, options Options) (*Searcher, error) {
-	s := NewSearcher(reader, length)
-	s.setOptions(options)
-
-	// Return an error if s.indexOpt == IndexRequired|IndexCreate
-	if s.indexOpt == IndexRequired || s.indexOpt == IndexCreate {
-		return nil, errors.New("IndexRequired/IndexCreate options are only supported with NewSearcherFileOptions")
-	}
-
-	return s, nil
-}
-
-// NewSearcherFile returns a new Searcher for filename, using default options.
-// NewSearcherFile opens the file and determines its length using os.Open and
+// NewSearcher returns a new Searcher for filename, using default options.
+// NewSearcher opens the file and determines its length using os.Open and
 // os.Stat - any errors are returned to the caller. The caller is responsible
 // for calling *Searcher.Close() when finished (e.g. via defer).
-func NewSearcherFile(filename string) (*Searcher, error) {
+func NewSearcher(filename string) (*Searcher, error) {
 	// Get file length
 	stat, err := os.Stat(filename)
 	if err != nil {
@@ -156,8 +126,16 @@ func NewSearcherFile(filename string) (*Searcher, error) {
 		return nil, err
 	}
 
-	s := NewSearcher(fh, filesize)
-	s.Filename = filepath.Base(filename)
+	s := Searcher{
+		r:          fh,
+		l:          filesize,
+		blocksize:  defaultBlocksize,
+		buf:        make([]byte, defaultBlocksize+1),
+		bufOffset:  -1,
+		dbufOffset: -1,
+		compare:    PrefixCompare,
+		filepath:   filename,
+	}
 
 	// Load index if one exists
 	index, _ := NewIndexLoad(filename)
@@ -165,12 +143,12 @@ func NewSearcherFile(filename string) (*Searcher, error) {
 		s.Index = index
 	}
 
-	return s, nil
+	return &s, nil
 }
 
-// NewSearcherFileOptions returns a new Searcher for filename f, using options.
-func NewSearcherFileOptions(filename string, options Options) (*Searcher, error) {
-	s, err := NewSearcherFile(filename)
+// NewSearcherOptions returns a new Searcher for filename f, using options.
+func NewSearcherOptions(filename string, options Options) (*Searcher, error) {
+	s, err := NewSearcher(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -319,7 +297,7 @@ func (s *Searcher) readBlockEntry(entry IndexEntry) error {
 		return nil
 	}
 
-	if entry.Length > cap(s.buf) {
+	if entry.Length > int64(cap(s.buf)) {
 		s.buf = make([]byte, entry.Length)
 	} else {
 		s.buf = s.buf[:entry.Length]
@@ -330,7 +308,7 @@ func (s *Searcher) readBlockEntry(entry IndexEntry) error {
 		s.bufOffset = -1
 		return err
 	}
-	if bytesread < entry.Length {
+	if int64(bytesread) < entry.Length {
 		s.bufOffset = -1
 		return fmt.Errorf("error reading block entry - read %d bytes, expected %d\n", bytesread, entry.Length)
 	}
@@ -407,8 +385,8 @@ func (s *Searcher) scanLineOffset(buf []byte, b []byte) (int, bool) {
 }
 
 // scanLinesMatching returns all lines beginning with byte sequence b from buf.
-// Also returns a terminate flag which is true we have reached a termination
-// condition (e.g. a byte sequence > b).
+// Also returns a terminate flag which is true if we have reached a termination
+// condition (e.g. a byte sequence > b, or we hit maxlines).
 func (s *Searcher) scanLinesMatching(buf, b []byte, maxlines int) ([][]byte, bool) {
 	// Find the offset of the first line in buf beginning with b
 	begin, terminate := s.scanLineOffset(buf, b)
@@ -423,10 +401,10 @@ func (s *Searcher) scanLinesMatching(buf, b []byte, maxlines int) ([][]byte, boo
 			return lines[:maxlines], true
 		}
 
-		nlidx := bytes.IndexByte(buf[begin:], '\n')
 		cmp := s.compare(buf[begin:begin+len(b)], b)
+		nlidx := bytes.IndexByte(buf[begin:], '\n')
 		//fmt.Printf("+ comparing %q (begin %d, nlidx %d) vs. %q == %d\n", string(buf[begin:begin+len(b)]), begin, nlidx, string(b), cmp)
-		if cmp == -1 {
+		if cmp < 0 {
 			if nlidx == -1 {
 				break
 			}
@@ -434,15 +412,33 @@ func (s *Searcher) scanLinesMatching(buf, b []byte, maxlines int) ([][]byte, boo
 			continue
 		}
 		if cmp == 0 {
+			// Boundary checking
+			if s.boundary && len(buf) > begin+len(b) {
+				// FIXME: does this need to done rune-wise, rather than byte-wise?
+				blast := buf[begin+len(b)-1 : begin+len(b)]
+				bnext := buf[begin+len(b) : begin+len(b)+1]
+				if (s.reWord.Match(blast) && s.reWord.Match(bnext)) ||
+					(!s.reWord.Match(blast) && !s.reWord.Match(bnext)) {
+					// Boundary check fails - skip this line
+					if nlidx == -1 {
+						break
+					} else {
+						begin += nlidx + 1
+						continue
+					}
+				}
+			}
+
 			if nlidx == -1 {
 				lines = append(lines, clone(buf[begin:]))
 				break
 			}
+
 			lines = append(lines, clone(buf[begin:begin+nlidx]))
 			begin += nlidx + 1
 			continue
 		}
-		// cmp == 1
+		// cmp > 0
 		terminate = true
 		break
 	}
@@ -629,13 +625,14 @@ func linesReadNextBlock(r io.ReaderAt, b []byte, pos int64) (bytesread int, eof 
 	return bytesread, false, nil
 }
 
-// scanIndexedLines returns all lines in s.r from pos that begin with the
-// byte slice b (data must be bytewise-ordered). Differs from
-// scanUnindexedLines because indexing means blocks finish cleanly on newlines.
+// scanIndexedLines returns all lines in s.r that begin with the byte slice b
+// (data must be bytewise-ordered). Differs from scanUnindexedLines
+// because indexing means blocks always finish cleanly on newlines.
 // Returns a slice of byte slices on success, and an empty slice of byte slices
 // and an error on error.
 func (s *Searcher) scanIndexedLines(b []byte, maxlines int) ([][]byte, error) {
 	e, entry := s.Index.BlockEntry(b)
+	//fmt.Printf("+ s.Index.BlockEntry(%q) returned: %d, %s/%d/%d\n", string(b), e, entry.Key, entry.Offset, entry.Length)
 
 	var lines, l [][]byte
 	var terminate, ok bool
@@ -656,7 +653,9 @@ func (s *Searcher) scanIndexedLines(b []byte, maxlines int) ([][]byte, error) {
 			break
 		}
 
-		entry, ok = s.Index.BlockEntryN(e + 1)
+		// Check next block
+		e++
+		entry, ok = s.Index.BlockEntryN(e)
 		if !ok {
 			break
 		}
@@ -811,12 +810,17 @@ func (s *Searcher) LinesLimited(b []byte, maxlines int) ([][]byte, error) {
 		return s.scanCompressedLines(b, maxlines)
 	}
 
+	// If no index exists, build and use a temporary one (but don't write)
 	if s.Index == nil {
-		return s.scanUnindexedLines(b, maxlines)
+		//return s.scanUnindexedLines(b, maxlines)
+		index, err := NewIndex(s.filepath)
+		if err != nil {
+			return [][]byte{}, err
+		}
+		s.Index = index
 	}
 
 	return s.scanIndexedLines(b, maxlines)
-
 }
 
 // Lines returns all lines in the reader that begin with the byte
