@@ -3,7 +3,7 @@ bsearch
 =======
 
 bsearch is a go library providing binary search functionality for line-ordered
-byte streams (such as `LC_COLLATE=C` sorted text files). It allows very fast
+byte streams (such as `LC_ALL=C` sorted text files). It allows very fast
 lookups based on line prefixes, like the venerable `look(1)` unix utility.
 
 bsearch can also be used via a `DB` object with a simple db-like interface,

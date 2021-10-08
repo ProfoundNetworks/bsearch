@@ -4,20 +4,21 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"regexp"
 
 	"github.com/ProfoundNetworks/bsearch"
 	flags "github.com/jessevdk/go-flags"
+	"github.com/rs/zerolog"
+	log "github.com/rs/zerolog/log"
 )
 
 // Options
 var opts struct {
-	Verbose  bool `short:"v" long:"verbose" description:"display verbose debug output"`
-	Header   bool `short:"H" long:"hdr" description:"ignore first line (header) in Filename when doing lookups"`
-	Rev      bool `short:"r" long:"rev" description:"reverse SearchString for search, and reverse output lines when printing"`
-	Boundary bool `short:"b" long:"boundary" description:"require SearchString to be followed by a word boundary (a word-nonword transition)"`
+	Verbose  []bool `short:"v" long:"verbose" description:"display verbose debug output"`
+	Header   bool   `short:"H" long:"hdr" description:"ignore first line (header) in Filename when doing lookups"`
+	Rev      bool   `short:"r" long:"rev" description:"reverse SearchString for search, and reverse output lines when printing"`
+	Boundary bool   `short:"b" long:"boundary" description:"require SearchString to be followed by a word boundary (a word-nonword transition)"`
 	//Utf8  bool   `short:"u" long:"utf8" description:"use utf8 string comparisons instead of (default) bytewise-compare"`
 	Args struct {
 		SearchString string
@@ -34,9 +35,14 @@ func usage() {
 }
 
 func vprintf(format string, args ...interface{}) {
-	if opts.Verbose {
+	if len(opts.Verbose) > 1 {
 		fmt.Fprintf(os.Stderr, format, args...)
 	}
+}
+
+func die(msg string) {
+	fmt.Fprintln(os.Stderr, msg)
+	os.Exit(1)
 }
 
 func main() {
@@ -50,7 +56,17 @@ func main() {
 	}
 
 	// Setup
-	log.SetFlags(0)
+	switch len(opts.Verbose) {
+	case 0:
+		zerolog.SetGlobalLevel(zerolog.WarnLevel)
+	case 1:
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	case 2:
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	default:
+		zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	}
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	// Die if Filename looks compressed
 	re := regexp.MustCompile(`\.(gz|bz2|br)$`)
@@ -63,7 +79,7 @@ func main() {
 	o := bsearch.Options{Header: opts.Header, Boundary: opts.Boundary}
 	bss, err := bsearch.NewSearcherOptions(opts.Args.Filename, o)
 	if err != nil {
-		log.Fatal(err)
+		die(err.Error())
 	}
 	if bss.Index != nil {
 		vprintf("+ using index %s\n", bsearch.IndexPath(opts.Args.Filename))
@@ -78,9 +94,9 @@ func main() {
 	results, err := bss.Lines([]byte(searchStr))
 	if err != nil {
 		if err == bsearch.ErrCompressedNoIndex {
-			log.Fatal("Error: compressed dataset without index - recompress using bsearch_compress.\n")
+			die("Error: compressed dataset without index - recompress using bsearch_compress.")
 		}
-		log.Fatalf("Error: %s\n", err)
+		die("Error: " + err.Error())
 	}
 	for _, l := range results {
 		var line string

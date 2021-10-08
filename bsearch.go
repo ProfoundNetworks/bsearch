@@ -1,6 +1,6 @@
 /*
 bsearch provides binary search functionality for line-ordered byte streams
-by prefix (e.g. for searching `LC_COLLATE=C` sorted text files).
+by prefix (e.g. for searching `LC_ALL=C` sorted text files).
 
 TODO: can we change the comparison function to support UTF-8 ordered keys?
       e.g. BytesEqual, StringEqual, BytesLessEqual, StringLessEqual
@@ -18,6 +18,7 @@ import (
 	"regexp"
 
 	"github.com/DataDog/zstd"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -225,42 +226,62 @@ func (s *Searcher) decompressBlockEntry(entry IndexEntry) error {
 	return nil
 }
 
-// scanLineOffset returns the offset of the first line within buf
-// that begins with the byte sequence b.
-// If not found, normally returns -1.
-// If not found and the MatchLE flag is set, it returns the last line
+func (s *Searcher) getNBytesFrom(buf []byte, offset, n int) []byte {
+	segment := buf[offset : offset+n]
+
+	// If we have a delimiter set, truncate segment if it contains any
+	// delimiters (i.e. comparisons should stop at delimiters)
+	if s.Index != nil && s.Index.Delimiter > 0 {
+		if d := bytes.Index(segment, []byte{s.Index.Delimiter}); d > -1 {
+			segment = segment[:d]
+		}
+	}
+
+	return segment
+}
+
+// scanLineOffset returns the offset of the first line within buf that
+// begins with the byte sequence b.
+// If not found and the MatchLE is not set, it returns an offset of -1.
+// If not found and the MatchLE flag IS set, it returns the last line
 // position with a byte sequence < b.
-// Also returns a terminate flag which is true we have reached a termination
-// condition (e.g. a byte sequence > b).
+// It also returns a terminate flag which is true we have reached a
+// termination condition (e.g. a byte sequence > b).
 func (s *Searcher) scanLineOffset(buf []byte, b []byte) (int, bool) {
 	var trailing int = -1
-	begin := 0
+	offset := 0
 	terminate := false
 
 	// Scan lines until we find one >= b
-	for begin < len(buf) {
-		cmp := s.compare(buf[begin:begin+len(b)], b)
-		//fmt.Fprintf(os.Stderr, "+ comparing %q (begin %d) vs. %q == %d\n", string(buf[begin:begin+len(b)]), begin, string(b), cmp)
+	for offset < len(buf) {
+		offsetPrefix := s.getNBytesFrom(buf, offset, len(b))
+		cmp := s.compare(offsetPrefix, b)
+		log.Trace().
+			Int("offset", offset).
+			Str("offsetPrefix", string(offsetPrefix)).
+			Str("search", string(b)).
+			Int("cmp", cmp).
+			Msg("scanLineOffset loop check")
 		if cmp == 0 {
-			return begin, false
+			return offset, false
 		} else if cmp == 1 {
 			terminate = true
 			break
 		}
 
 		// Current line < b - find next newline
-		nlidx := bytes.IndexByte(buf[begin:], '\n')
+		nlidx := bytes.IndexByte(buf[offset:], '\n')
 		if nlidx == -1 {
 			// If no new newline is found, we're done
 			break
 		}
 
-		// Newline found - update begin
-		trailing = begin
-		begin += nlidx + 1
+		// Newline found - update offset
+		trailing = offset
+		offset += nlidx + 1
 	}
 
-	// If using less-than-or-equal-to semantics, return trailingPosition if that is set
+	// If using less-than-or-equal-to semantics, return trailingPosition if set
 	if s.matchLE && trailing > -1 {
 		return trailing, terminate
 	}
@@ -277,7 +298,10 @@ func (s *Searcher) scanLinesMatching(buf, b []byte, maxlines int) ([][]byte, boo
 	if begin == -1 || terminate {
 		return [][]byte{}, terminate
 	}
-	//fmt.Printf("+ line offset for %q in buf: %d\n", string(b), begin)
+	log.Debug().
+		Str("search", string(b)).
+		Int("lineOffset", begin).
+		Msg("scanLinesMatching line1")
 
 	var lines [][]byte
 	for begin < len(buf) {
@@ -357,11 +381,17 @@ func linesReadNextBlock(r io.ReaderAt, b []byte, pos int64) (bytesread int, eof 
 // scanIndexedLines returns all lines in s.r that begin with the byte slice b
 // (data must be bytewise-ordered).
 // Note that the index ensures blocks always finish cleanly on newlines.
-// Returns a slice of byte slices on success, and an empty slice of byte slices
+// Returns a slice of byte slices on success, and an empty version
 // and an error on error.
 func (s *Searcher) scanIndexedLines(b []byte, maxlines int) ([][]byte, error) {
 	e, entry := s.Index.BlockEntry(b)
-	//fmt.Printf("+ s.Index.BlockEntry(%q) returned: %d, %s/%d/%d\n", string(b), e, entry.Key, entry.Offset, entry.Length)
+	log.Info().
+		Str("search", string(b)).
+		Int("entryIndex", e).
+		Str("entry.Key", entry.Key).
+		Int64("entry.Offset", entry.Offset).
+		Int64("entry.Length", entry.Length).
+		Msg("scanIndexedLines blockEntry return")
 
 	var lines, l [][]byte
 	var terminate, ok bool
