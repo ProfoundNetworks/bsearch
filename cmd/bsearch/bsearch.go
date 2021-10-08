@@ -66,7 +66,6 @@ func main() {
 	default:
 		zerolog.SetGlobalLevel(zerolog.TraceLevel)
 	}
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	// Die if Filename looks compressed
 	re := regexp.MustCompile(`\.(gz|bz2|br)$`)
@@ -77,12 +76,18 @@ func main() {
 
 	// Instantiate searcher
 	o := bsearch.Options{Header: opts.Header, Boundary: opts.Boundary}
+	if len(opts.Verbose) > 0 {
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+		o.Logger = &log.Logger
+	}
 	bss, err := bsearch.NewSearcherOptions(opts.Args.Filename, o)
 	if err != nil {
 		die(err.Error())
 	}
 	if bss.Index != nil {
-		vprintf("+ using index %s\n", bsearch.IndexPath(opts.Args.Filename))
+		log.Info().
+			Str("path", bsearch.IndexPath(opts.Args.Filename)).
+			Msg("using index")
 	}
 
 	searchStr := opts.Args.SearchString

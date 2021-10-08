@@ -18,7 +18,7 @@ import (
 	"regexp"
 
 	"github.com/DataDog/zstd"
-	"github.com/rs/zerolog/log"
+	"github.com/rs/zerolog"
 )
 
 const (
@@ -41,6 +41,7 @@ type Options struct {
 	Boundary  bool                  // search string must be followed by a word boundary
 	MatchLE   bool                  // LinePosition uses less-than-or-equal-to match semantics
 	Index     IndexSemantics        // Index semantics: 1=Require, 2=Create, 3=None
+	Logger    *zerolog.Logger       // debug logger
 }
 
 // Searcher provides binary search functionality for line-ordered byte streams by prefix.
@@ -60,6 +61,7 @@ type Searcher struct {
 	boundary   bool                  // search string must be followed by a word boundary
 	matchLE    bool                  // LinePosition uses less-than-or-equal-to match semantics
 	reWord     *regexp.Regexp        // regexp used for boundary matching
+	logger     *zerolog.Logger       // debug logger
 }
 
 // setOptions sets the given options on searcher
@@ -82,6 +84,9 @@ func (s *Searcher) setOptions(options Options) {
 	}
 	if options.Index > 0 && options.Index <= 3 {
 		s.indexOpt = options.Index
+	}
+	if options.Logger != nil {
+		s.logger = options.Logger
 	}
 }
 
@@ -256,12 +261,14 @@ func (s *Searcher) scanLineOffset(buf []byte, b []byte) (int, bool) {
 	for offset < len(buf) {
 		offsetPrefix := s.getNBytesFrom(buf, offset, len(b))
 		cmp := s.compare(offsetPrefix, b)
-		log.Trace().
-			Int("offset", offset).
-			Str("offsetPrefix", string(offsetPrefix)).
-			Str("search", string(b)).
-			Int("cmp", cmp).
-			Msg("scanLineOffset loop check")
+		if s.logger != nil {
+			s.logger.Trace().
+				Int("offset", offset).
+				Str("offsetPrefix", string(offsetPrefix)).
+				Str("search", string(b)).
+				Int("cmp", cmp).
+				Msg("scanLineOffset loop check")
+		}
 		if cmp == 0 {
 			return offset, false
 		} else if cmp == 1 {
@@ -298,10 +305,12 @@ func (s *Searcher) scanLinesMatching(buf, b []byte, maxlines int) ([][]byte, boo
 	if begin == -1 || terminate {
 		return [][]byte{}, terminate
 	}
-	log.Debug().
-		Str("search", string(b)).
-		Int("lineOffset", begin).
-		Msg("scanLinesMatching line1")
+	if s.logger != nil {
+		s.logger.Debug().
+			Str("search", string(b)).
+			Int("lineOffset", begin).
+			Msg("scanLinesMatching line1")
+	}
 
 	var lines [][]byte
 	for begin < len(buf) {
@@ -385,13 +394,15 @@ func linesReadNextBlock(r io.ReaderAt, b []byte, pos int64) (bytesread int, eof 
 // and an error on error.
 func (s *Searcher) scanIndexedLines(b []byte, maxlines int) ([][]byte, error) {
 	e, entry := s.Index.BlockEntry(b)
-	log.Info().
-		Str("search", string(b)).
-		Int("entryIndex", e).
-		Str("entry.Key", entry.Key).
-		Int64("entry.Offset", entry.Offset).
-		Int64("entry.Length", entry.Length).
-		Msg("scanIndexedLines blockEntry return")
+	if s.logger != nil {
+		s.logger.Debug().
+			Str("search", string(b)).
+			Int("entryIndex", e).
+			Str("entry.Key", entry.Key).
+			Int64("entry.Offset", entry.Offset).
+			Int64("entry.Length", entry.Length).
+			Msg("scanIndexedLines blockEntry return")
+	}
 
 	var lines, l [][]byte
 	var terminate, ok bool
