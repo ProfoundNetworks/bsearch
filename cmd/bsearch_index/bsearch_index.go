@@ -21,10 +21,10 @@ import (
 
 // Options
 var opts struct {
-	Verbose bool `short:"v" long:"verbose" description:"display verbose debug output"`
-	Delim   byte `short:"t" long:"sep"     description:"separator/delimiter character" default:"1"`
-	Force   bool `short:"f" long:"force"   description:"force index generation even if up-to-date"`
-	Cat     bool `short:"c" long:"cat"     description:"write generated index to stdout instead of to file"`
+	Verbose bool   `short:"v" long:"verbose" description:"display verbose debug output"`
+	Delim   string `short:"t" long:"sep"     description:"separator/delimiter character" default:","`
+	Force   bool   `short:"f" long:"force"   description:"force index generation even if up-to-date"`
+	Cat     bool   `short:"c" long:"cat"     description:"write generated index to stdout instead of to file"`
 	Args    struct {
 		Filename string
 	} `positional-args:"yes" required:"yes"`
@@ -42,6 +42,15 @@ func vprintf(format string, args ...interface{}) {
 	if opts.Verbose {
 		fmt.Fprintf(os.Stderr, format, args...)
 	}
+}
+
+func convertDelimiter(delim string) byte {
+	bytes := []byte(delim)
+	if len(bytes) != 1 {
+		// FIXME: does an empty string make sense?
+		log.Fatal("delimiter must be a single-byte character")
+	}
+	return bytes[0]
 }
 
 func main() {
@@ -81,7 +90,8 @@ func main() {
 	}
 
 	// Generate and write index
-	index, err := bsearch.NewIndexDelim(opts.Args.Filename, opts.Delim)
+	delim := convertDelimiter(opts.Delim)
+	index, err := bsearch.NewIndexDelim(opts.Args.Filename, delim)
 	if err != nil {
 		log.Fatal(err)
 	}
