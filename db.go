@@ -1,11 +1,12 @@
 /*
 DB provides a key-value-store-like interface using bsearch.Searcher.
-Returns the first entry prefixed with the given key.
+Returns the first entry containing the given key.
 */
 
 package bsearch
 
 import (
+	"bytes"
 	"errors"
 	"io"
 )
@@ -37,15 +38,17 @@ func NewDB(filename, delim string) (*DB, error) {
 	return &DB{bss: bss, delim: []byte(delim)}, nil
 }
 
-// Get returns the (first) value associated with key in db (or ErrNotFound if missing)
+// Get returns the (first) value associated with key in db
+// (or ErrNotFound if missing)
 func (db *DB) Get(key []byte) ([]byte, error) {
 	lookup := key
-	trim := len(db.delim)
+	// If we just lookup by key (no delim), we must trim it from result
+	trimPrefix := db.delim
 
 	// If the underlying index is not using a delimiter, add ours
 	if db.bss.Index != nil && db.bss.Index.Delimiter == 0 {
 		lookup = append(key, db.delim...)
-		trim = 0
+		trimPrefix = []byte{} // no trim required
 	}
 
 	line, err := db.bss.Line(lookup)
@@ -53,7 +56,16 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	return line[len(lookup)+trim:], nil
+	line = bytes.TrimPrefix(line, lookup)
+
+	// If trimPrefix is set, it must match the beginning of line,
+	// or we have no match
+	if len(trimPrefix) > 0 && !bytes.HasPrefix(line, trimPrefix) {
+		return nil, ErrNotFound
+	}
+	line = bytes.TrimPrefix(line, trimPrefix)
+
+	return line, nil
 }
 
 // GetString returns the (first) value associated with key in db, as a string (or ErrNotFound if missing)
