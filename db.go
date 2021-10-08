@@ -12,15 +12,15 @@ import (
 
 // DB provides a key-value-store-like interface using bsearch.Searcher
 type DB struct {
-	bss *Searcher // searcher
-	sep []byte    // separator bytes
+	bss   *Searcher // searcher
+	delim []byte    // delimiter
 }
 
-// NewDB returns a new DB for filename, using separator to terminate keys.
+// NewDB returns a new DB for filename, using delimiter to terminate keys.
 // The caller is responsible for calling DB.Close() when finished (e.g. via defer).
-func NewDB(filename, separator string) (*DB, error) {
-	if separator == "" {
-		return nil, errors.New("NewDB separator cannot be an empty string")
+func NewDB(filename, delim string) (*DB, error) {
+	if delim == "" {
+		return nil, errors.New("NewDB delimiter cannot be an empty string")
 	}
 
 	bss, err := NewSearcher(filename)
@@ -28,19 +28,32 @@ func NewDB(filename, separator string) (*DB, error) {
 		return nil, err
 	}
 
-	return &DB{bss: bss, sep: []byte(separator)}, nil
+	// FIXME: If the searcher has an index with a different delimiter,
+	// we have a problem
+	//if bss.Index != nil && bss.Index.Delimiter != delim {
+	//    return nil, errors.New("NewDB delimiter does not not match index delimiter!")
+	//}
+
+	return &DB{bss: bss, delim: []byte(delim)}, nil
 }
 
 // Get returns the (first) value associated with key in db (or ErrNotFound if missing)
 func (db *DB) Get(key []byte) ([]byte, error) {
-	lookup := append(key, db.sep...)
+	lookup := key
+	trim := len(db.delim)
+
+	// If the underlying index is not using a delimiter, add ours
+	if db.bss.Index != nil && db.bss.Index.Delimiter == 0 {
+		lookup = append(key, db.delim...)
+		trim = 0
+	}
 
 	line, err := db.bss.Line(lookup)
 	if err != nil {
 		return nil, err
 	}
 
-	return line[len(lookup):], nil
+	return line[len(lookup)+trim:], nil
 }
 
 // GetString returns the (first) value associated with key in db, as a string (or ErrNotFound if missing)
