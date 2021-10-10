@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	//"github.com/rs/zerolog"
+	//"github.com/rs/zerolog/log"
 )
 
 // Test Line() using testdata/rdns1.csv, existing keys
@@ -38,7 +40,7 @@ func TestLine1(t *testing.T) {
 	}
 }
 
-// Test Line() using testdata/domain.csv
+// Test Line() using testdata/domains1.csv (no header)
 func TestLine2(t *testing.T) {
 	var tests = []struct {
 		key    string
@@ -74,7 +76,7 @@ func TestLine2(t *testing.T) {
 	}
 }
 
-// Test Line() using testdata/domain.csv
+// Test Line() using testdata/domains2.csv (header)
 func TestLine3(t *testing.T) {
 	var tests = []struct {
 		key    string
@@ -143,41 +145,26 @@ func TestLine4(t *testing.T) {
 	}
 }
 
-// Test Lines() using testdata/alstom.csv
-func TestLines(t *testing.T) {
+// Test Lines() using testdata/alstom1.csv (no header)
+func TestLines1(t *testing.T) {
 	var tests = []struct {
 		key    string
 		expect string
 	}{
-		// alstom.com
 		{"alstom.com", `alstom.com,alstom.com,SOA
 alstom.com,alstom.com,ULT
-alstom.com.au,alstom.com,RED
-alstom.com.br,alstom.com,RED
 `},
-		// alstom.com, with delimiter
-		{"alstom.com,", `alstom.com,alstom.com,SOA
-alstom.com,alstom.com,ULT
-`},
-		// alstom.co
-		{"alstom.co", `alstom.co.th,alstom.com,RED
-alstom.com,alstom.com,SOA
-alstom.com,alstom.com,ULT
-alstom.com.au,alstom.com,RED
-alstom.com.br,alstom.com,RED
-`},
-		// alstom.c (includes first line)
-		{"alstom.c", `alstom.ca,alstom.com,RED
-alstom.co.th,alstom.com,RED
-alstom.com,alstom.com,SOA
-alstom.com,alstom.com,ULT
-alstom.com.au,alstom.com,RED
-alstom.com.br,alstom.com,RED
-`},
+		{"alstom.com.au", "alstom.com.au,alstom.com,RED\n"},
+		{"alstom.com.br", "alstom.com.br,alstom.com,RED\n"},
 	}
 
 	o := Options{Header: false}
-	s, err := NewSearcherOptions("testdata/alstom.csv", o)
+	/*
+		zerolog.SetGlobalLevel(zerolog.TraceLevel)
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+		o.Logger = &log.Logger
+	*/
+	s, err := NewSearcherOptions("testdata/alstom1.csv", o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +188,7 @@ alstom.com.br,alstom.com,RED
 	}
 }
 
-// Test Lines() using testdata/alstom2.csv (with header)
+// Test Lines() using testdata/alstom2.csv (header)
 func TestLines2(t *testing.T) {
 	var tests = []struct {
 		key    string
@@ -210,28 +197,9 @@ func TestLines2(t *testing.T) {
 		// alstom.com (includes last line of file)
 		{"alstom.com", `alstom.com,alstom.com,SOA
 alstom.com,alstom.com,ULT
-alstom.com.au,alstom.com,RED
-alstom.com.br,alstom.com,RED
 `},
-		// alstom.com, with delimiter
-		{"alstom.com,", `alstom.com,alstom.com,SOA
-alstom.com,alstom.com,ULT
-`},
-		// alstom.co (includes last line of file)
-		{"alstom.co", `alstom.co.th,alstom.com,RED
-alstom.com,alstom.com,SOA
-alstom.com,alstom.com,ULT
-alstom.com.au,alstom.com,RED
-alstom.com.br,alstom.com,RED
-`},
-		// alstom.c (includes first line after header, and last line of file)
-		{"alstom.c", `alstom.ca,alstom.com,RED
-alstom.co.th,alstom.com,RED
-alstom.com,alstom.com,SOA
-alstom.com,alstom.com,ULT
-alstom.com.au,alstom.com,RED
-alstom.com.br,alstom.com,RED
-`},
+		{"alstom.com.au", "alstom.com.au,alstom.com,RED\n"},
+		{"alstom.com.br", "alstom.com.br,alstom.com,RED\n"},
 	}
 
 	o := Options{Header: true}
@@ -265,11 +233,17 @@ func TestLinesMultiBlock1(t *testing.T) {
 		key        string
 		first_line string
 		last_line  string
+		line_count int
 	}{
-		{"alstom.com,", "alstom.com,first", "alstom.com,last"},
+		{"alstom.com", "alstom.com,first", "alstom.com,last", 438},
 	}
 
 	o := Options{Header: true}
+	/*
+		zerolog.SetGlobalLevel(zerolog.TraceLevel)
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+		o.Logger = &log.Logger
+	*/
 	s, err := NewSearcherOptions("testdata/alstom3.csv", o)
 	if err != nil {
 		t.Fatal(err)
@@ -279,19 +253,18 @@ func TestLinesMultiBlock1(t *testing.T) {
 	for _, tc := range tests {
 		lines, err := s.Lines([]byte(tc.key))
 		if err != nil {
-			if err != ErrNotFound {
-				t.Fatalf("%s: %s\n", tc.key, err.Error())
+			t.Fatalf("%s: %s\n", tc.key, err.Error())
+		}
+		if len(lines) != tc.line_count {
+			t.Errorf("%s: expected %d lines, got %d", tc.key, tc.line_count, len(lines))
+		}
+		if len(lines) > 0 {
+			if string(lines[0]) != tc.first_line {
+				t.Errorf("%q => first line %q\n   expected %q\n", tc.key, lines[0], tc.first_line)
 			}
-		}
-		//fmt.Println("+ lines:")
-		//for _, line := range lines {
-		//	fmt.Printf("  %s\n", string(line))
-		//}
-		if string(lines[0]) != tc.first_line {
-			t.Errorf("%q => first line %q\n   expected %q\n", tc.key, lines[0], tc.first_line)
-		}
-		if string(lines[len(lines)-1]) != tc.last_line {
-			t.Errorf("%q => last line %q\n   expected %q\n", tc.key, lines[len(lines)-1], tc.last_line)
+			if string(lines[len(lines)-1]) != tc.last_line {
+				t.Errorf("%q => last line %q\n   expected %q\n", tc.key, lines[len(lines)-1], tc.last_line)
+			}
 		}
 	}
 }
@@ -303,7 +276,7 @@ func TestLinesMultiBlock2(t *testing.T) {
 		first_line string
 		last_line  string
 	}{
-		{"alstom.com,", "alstom.com,first", "alstom.com,last"},
+		{"alstom.com", "alstom.com,first", "alstom.com,last"},
 	}
 
 	o := Options{Header: true}
@@ -316,15 +289,18 @@ func TestLinesMultiBlock2(t *testing.T) {
 	for _, tc := range tests {
 		lines, err := s.Lines([]byte(tc.key))
 		if err != nil {
-			if err != ErrNotFound {
-				t.Fatalf("%s: %s\n", tc.key, err.Error())
+			t.Fatalf("%s: %s\n", tc.key, err.Error())
+		}
+		if len(lines) <= 2 {
+			t.Fatalf("%s: expected N>2 lines, got %d\n", tc.key, len(lines))
+		}
+		if len(lines) > 0 {
+			if string(lines[0]) != tc.first_line {
+				t.Errorf("%q => first line %q\n   expected %q\n", tc.key, lines[0], tc.first_line)
 			}
-		}
-		if string(lines[0]) != tc.first_line {
-			t.Errorf("%q => first line %q\n   expected %q\n", tc.key, lines[0], tc.first_line)
-		}
-		if string(lines[len(lines)-1]) != tc.last_line {
-			t.Errorf("%q => last line %q\n   expected %q\n", tc.key, lines[len(lines)-1], tc.last_line)
+			if string(lines[len(lines)-1]) != tc.last_line {
+				t.Errorf("%q => last line %q\n   expected %q\n", tc.key, lines[len(lines)-1], tc.last_line)
+			}
 		}
 	}
 }
@@ -336,7 +312,7 @@ func TestLinesMultiBlock3(t *testing.T) {
 		first_line string
 		last_line  string
 	}{
-		{"foo,", "foo,1", "foo,10000"},
+		{"foo", "foo,1", "foo,10000"},
 	}
 
 	o := Options{Header: false}
@@ -365,6 +341,7 @@ func TestLinesMultiBlock3(t *testing.T) {
 	}
 }
 
+/*
 // Test Lines() with Options.Boundary set (on alstom2.csv)
 func TestLinesBoundary(t *testing.T) {
 	var tests = []struct {
@@ -455,6 +432,7 @@ ac.101gnitekrametailiffa.stcatnocpc
 		}
 	}
 }
+*/
 
 // Benchmark Lines()
 func BenchmarkLines(b *testing.B) {
