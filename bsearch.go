@@ -232,7 +232,17 @@ func (s *Searcher) decompressBlockEntry(entry IndexEntry) error {
 }
 
 func (s *Searcher) getNBytesFrom(buf []byte, offset, n int) []byte {
-	return buf[offset : offset+n]
+	segment := buf[offset : offset+n]
+
+	// If a delimiter is set, truncate segment at the first delimiter
+	if s.Index != nil && s.Index.Delimiter > 0 {
+		delim := []byte{s.Index.Delimiter}
+		if d := bytes.Index(segment, delim); d > -1 {
+			segment = segment[:d]
+		}
+	}
+
+	return segment
 }
 
 // scanLineOffset returns the offset of the first line within buf that
@@ -288,18 +298,18 @@ func (s *Searcher) scanLineOffset(buf []byte, k []byte) (int, bool) {
 	return -1, terminate
 }
 
-// scanLinesMatching returns all lines beginning with byte sequence b from buf.
-// Also returns a terminate flag which is true if we have reached a termination
-// condition (e.g. a byte sequence > b, or we hit n).
-func (s *Searcher) scanLinesMatching(buf, b []byte, n int) ([][]byte, bool) {
+// scanLinesMatching returns all lines beginning with key k from buf.
+// Also returns a terminate flag which is true if we have reached a
+// termination condition (e.g. a byte sequence > k, or we hit n).
+func (s *Searcher) scanLinesMatching(buf, k []byte, n int) ([][]byte, bool) {
 	// Find the offset of the first line in buf beginning with b
-	offset, terminate := s.scanLineOffset(buf, b)
+	offset, terminate := s.scanLineOffset(buf, k)
 	if offset == -1 || terminate {
 		return [][]byte{}, terminate
 	}
 	if s.logger != nil {
 		s.logger.Debug().
-			Str("search", string(b)).
+			Str("key", string(k)).
 			Int("offset", offset).
 			Msg("scanLinesMatching line1")
 	}
@@ -310,8 +320,9 @@ func (s *Searcher) scanLinesMatching(buf, b []byte, n int) ([][]byte, bool) {
 			return lines[:n], true
 		}
 
-		offsetPrefix := s.getNBytesFrom(buf, offset, len(b))
-		cmp := s.compare(offsetPrefix, b)
+		offsetPrefix := s.getNBytesFrom(buf, offset, len(k))
+		//offsetPrefix := buf[offset : offset+len(k)]
+		cmp := s.compare(offsetPrefix, k)
 		nlidx := bytes.IndexByte(buf[offset:], '\n')
 		/*
 			if s.logger != nil {
@@ -331,6 +342,14 @@ func (s *Searcher) scanLinesMatching(buf, b []byte, n int) ([][]byte, bool) {
 			continue
 		}
 		if cmp == 0 {
+			// Key search, so check the next segment is our delimiter
+			// (if it's not this is a prefix match, not a key match - break)
+			i := offset + len(offsetPrefix)
+			// FIXME: should be buf[i:i+len(s.Index.Delimiter)]
+			if buf[i] != s.Index.Delimiter {
+				break
+			}
+
 			if nlidx == -1 {
 				lines = append(lines, clone(buf[offset:]))
 				break
@@ -396,11 +415,8 @@ func (s *Searcher) scanIndexedLines(k []byte, n int) ([][]byte, error) {
 			return [][]byte{}, err
 		}
 
-		// Key search, so append delimiter
-		b := append(k, s.Index.Delimiter)
-
 		// Scan matching lines
-		l, terminate = s.scanLinesMatching(s.buf, b, n)
+		l, terminate = s.scanLinesMatching(s.buf, k, n)
 		if len(l) > 0 {
 			lines = append(lines, l...)
 		}
@@ -442,11 +458,8 @@ func (s *Searcher) scanCompressedLines(k []byte, n int) ([][]byte, error) {
 		}
 		//fmt.Printf("+ block for entry %d decompressed\n", entry.Offset)
 
-		// Key search, so append delimiter
-		b := append(k, s.Index.Delimiter)
-
 		// Scan matching lines
-		l, terminate = s.scanLinesMatching(s.dbuf, b, n)
+		l, terminate = s.scanLinesMatching(s.dbuf, k, n)
 		if len(l) > 0 {
 			lines = append(lines, l...)
 		}
