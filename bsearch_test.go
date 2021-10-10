@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
 	//"github.com/rs/zerolog"
 	//"github.com/rs/zerolog/log"
+	"github.com/stretchr/testify/assert"
 )
 
 // Test Line() using testdata/rdns1.csv, existing keys
@@ -94,6 +96,11 @@ func TestLine3(t *testing.T) {
 	}
 
 	o := Options{Header: true}
+	/*
+		zerolog.SetGlobalLevel(zerolog.TraceLevel)
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+		o.Logger = &log.Logger
+	*/
 	s, err := NewSearcherOptions("testdata/domains2.csv", o)
 	if err != nil {
 		t.Fatal(err)
@@ -107,41 +114,7 @@ func TestLine3(t *testing.T) {
 				t.Fatalf("%s: %s\n", tc.key, err.Error())
 			}
 		}
-		if string(line) != tc.expect {
-			t.Errorf("%q => %q\n   expected %q\n", tc.key, line, tc.expect)
-		}
-	}
-}
-
-// Test Line() using testdata/rdns1i.csv, existing keys, with an index
-func TestLine4(t *testing.T) {
-	var tests = []struct {
-		key    string
-		expect string
-	}{
-		{"001.000.128.000", "001.000.128.000,node-0.pool-1-0.dynamic.totinternet.net,202003,totinternet.net"},
-		{"001.034.164.000", "001.034.164.000,1-34-164-0.HINET-IP.hinet.net,202003,hinet.net"},
-		{"003.122.207.000", "003.122.207.000,ec2-3-122-207-0.eu-central-1.compute.amazonaws.com,202003,amazonaws.com"},
-		{"003.126.183.000", "003.126.183.000,ec2-3-126-183-0.eu-central-1.compute.amazonaws.com,202003,amazonaws.com"},
-		{"024.066.017.000", "024.066.017.000,S0106905851b9f0e0.rd.shawcable.net,202003,shawcable.net"},
-		{"032.176.184.000", "032.176.184.000,mobile000.mycingular.net,202003,mycingular.net"},
-		{"223.252.003.000", "223.252.003.000,223-252-3-0.as45671.net,202003,as45671.net"},
-	}
-
-	s, err := NewSearcher("testdata/rdns1i.csv")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-
-	for _, tc := range tests {
-		line, err := s.Line([]byte(tc.key))
-		if err != nil {
-			t.Fatalf("%s: %s\n", tc.key, err.Error())
-		}
-		if string(line) != tc.expect {
-			t.Errorf("%q => %q\n   expected %q\n", tc.key, line, tc.expect)
-		}
+		assert.Equal(t, tc.expect, string(line), tc.key)
 	}
 }
 

@@ -231,15 +231,12 @@ func (s *Searcher) decompressBlockEntry(entry IndexEntry) error {
 	return nil
 }
 
-func (s *Searcher) getNBytesFrom(buf []byte, offset, n int) []byte {
-	segment := buf[offset : offset+n]
+func getNBytesFrom(buf []byte, length int, delim []byte) []byte {
+	segment := buf[:length]
 
-	// If a delimiter is set, truncate segment at the first delimiter
-	if s.Index != nil && s.Index.Delimiter > 0 {
-		delim := []byte{s.Index.Delimiter}
-		if d := bytes.Index(segment, delim); d > -1 {
-			segment = segment[:d]
-		}
+	// If segment includes a delimiter, truncate it there
+	if d := bytes.Index(segment, delim); d > -1 {
+		return segment[:d]
 	}
 
 	return segment
@@ -256,10 +253,11 @@ func (s *Searcher) scanLineOffset(buf []byte, k []byte) (int, bool) {
 	var trailing int = -1
 	offset := 0
 	terminate := false
+	delim := s.Index.Delimiter
 
 	// Scan lines until we find one >= b
 	for offset < len(buf) {
-		offsetPrefix := s.getNBytesFrom(buf, offset, len(k))
+		offsetPrefix := getNBytesFrom(buf[offset:], len(k), delim)
 		cmp := s.compare(offsetPrefix, k)
 		/*
 			if s.logger != nil {
@@ -314,21 +312,22 @@ func (s *Searcher) scanLinesMatching(buf, k []byte, n int) ([][]byte, bool) {
 			Msg("scanLinesMatching line1")
 	}
 
+	delim := s.Index.Delimiter
 	var lines [][]byte
 	for offset < len(buf) {
 		if n > 0 && len(lines) >= n {
 			return lines[:n], true
 		}
 
-		offsetPrefix := s.getNBytesFrom(buf, offset, len(k))
-		//offsetPrefix := buf[offset : offset+len(k)]
+		offsetPrefix := getNBytesFrom(buf[offset:], len(k), delim)
 		cmp := s.compare(offsetPrefix, k)
 		nlidx := bytes.IndexByte(buf[offset:], '\n')
 		/*
 			if s.logger != nil {
 				s.logger.Trace().
-					Str("search", string(b)).
+					Str("key", string(k)).
 					Int("offset", offset).
+					Str("offsetPrefix", string(offsetPrefix)).
 					Int("cmp", cmp).
 					Int("nlidx", nlidx).
 					Msg("scanLinesMatching loop")
@@ -345,8 +344,7 @@ func (s *Searcher) scanLinesMatching(buf, k []byte, n int) ([][]byte, bool) {
 			// Key search, so check the next segment is our delimiter
 			// (if it's not this is a prefix match, not a key match - break)
 			i := offset + len(offsetPrefix)
-			// FIXME: should be buf[i:i+len(s.Index.Delimiter)]
-			if buf[i] != s.Index.Delimiter {
+			if !bytes.HasPrefix(buf[i:], s.Index.Delimiter) {
 				break
 			}
 
@@ -389,8 +387,8 @@ func linesReadNextBlock(r io.ReaderAt, b []byte, pos int64) (bytesread int, eof 
 	return bytesread, false, nil
 }
 
-// scanIndexedLines returns all lines in the reader that begin with the
-// key k (data must be bytewise-ordered).
+// scanIndexedLines returns up to n lines in the reader that begin with
+// the key k (data must be bytewise-ordered).
 // Note that the index ensures blocks always finish cleanly on newlines.
 // Returns a slice of byte slices on success.
 func (s *Searcher) scanIndexedLines(k []byte, n int) ([][]byte, error) {
@@ -412,6 +410,11 @@ func (s *Searcher) scanIndexedLines(k []byte, n int) ([][]byte, error) {
 		// Read entry block into s.buf
 		err := s.readBlockEntry(entry)
 		if err != nil {
+			if s.logger != nil {
+				s.logger.Error().
+					Str("error", err.Error()).
+					Msg("readBlockEntry error")
+			}
 			return [][]byte{}, err
 		}
 

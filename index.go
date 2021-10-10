@@ -24,10 +24,7 @@ import (
 )
 
 const (
-	indexSuffix    = "bsx"
-	nullDelimiter  = 0 // A 'null' delimiter means no delimiter exists for a file
-	undefDelimiter = 1 // An 'undef' delimiter means we don't know if a delimiter exists (we'll guess)
-	tabDelimiter   = 9
+	indexSuffix = "bsx"
 )
 
 type IndexSemantics int
@@ -51,7 +48,7 @@ type IndexEntry struct {
 }
 
 type Index struct {
-	Delimiter byte         `yaml:"delim"`
+	Delimiter []byte       `yaml:"delim"`
 	Epoch     int64        `yaml:"epoch"`
 	Filedir   string       `yaml:"filedir"`
 	Filename  string       `yaml:"filename"`
@@ -83,7 +80,8 @@ func IndexPath(filename string) string {
 
 // processBlock processes the block in buf[:bytesread] and returns an IndexEntry
 // for the first line it finds.
-func processBlock(reader io.ReaderAt, buf []byte, bytesread int, blockPosition int64, delim byte, eof bool) (IndexEntry, int64, error) {
+func processBlock(reader io.ReaderAt, buf []byte, bytesread int,
+	blockPosition int64, delim []byte, eof bool) (IndexEntry, int64, error) {
 	var err error
 	nlidx := -1
 
@@ -97,18 +95,16 @@ func processBlock(reader io.ReaderAt, buf []byte, bytesread int, blockPosition i
 			if err != nil && err != io.EOF {
 				return IndexEntry{}, blockPosition, err
 			}
-			return processBlock(reader, buf, bytesread, blockPosition, delim, err == io.EOF)
+			return processBlock(reader, buf, bytesread, blockPosition,
+				delim, err == io.EOF)
 		}
 	}
 
-	d := delim
-	if delim == nullDelimiter {
-		d = '\n'
-	}
-
-	didx := bytes.IndexByte(buf[nlidx+1:bytesread], d)
+	//d := delim
+	didx := bytes.Index(buf[nlidx+1:bytesread], delim)
 	if didx == -1 {
-		// If no delimiter is found in block, assume we have a partial line, and re-read from nlidx
+		// If no delimiter is found in block, assume we have a partial line,
+		// and re-read from nlidx
 		if nlidx == -1 {
 			return IndexEntry{}, blockPosition, ErrKeyExceedsBlocksize
 		}
@@ -117,13 +113,16 @@ func processBlock(reader io.ReaderAt, buf []byte, bytesread int, blockPosition i
 		if err != nil && err != io.EOF {
 			return IndexEntry{}, blockPosition, err
 		}
-		return processBlock(reader, buf, bytesread, blockPosition, delim, err == io.EOF)
+		return processBlock(reader, buf, bytesread, blockPosition,
+			delim, err == io.EOF)
 	}
 	didx += nlidx + 1
 
 	// Check that there's no newline in this chunk
 	if nlidx2 := bytes.IndexByte(buf[nlidx+1:didx], '\n'); nlidx2 != -1 {
-		return IndexEntry{}, blockPosition, fmt.Errorf("Error: line without delimiter found:\n%s\n", string(buf[nlidx+1:nlidx2]))
+		return IndexEntry{}, blockPosition,
+			fmt.Errorf("Error: line without delimiter found:\n%s\n",
+				string(buf[nlidx+1:nlidx2]))
 	}
 
 	// Create entry
@@ -139,7 +138,8 @@ func processBlock(reader io.ReaderAt, buf []byte, bytesread int, blockPosition i
 			// Corner case - no newline found in block
 			return IndexEntry{}, blockPosition, errors.New("Missing first block nlidx handling not yet implemented")
 		}
-		entry2, bp2, err := processBlock(reader, buf[nlidx:bytesread], bytesread-(nlidx), blockPosition+int64(nlidx), delim, eof)
+		entry2, bp2, err := processBlock(reader, buf[nlidx:bytesread],
+			bytesread-(nlidx), blockPosition+int64(nlidx), delim, eof)
 		if err != nil {
 			return IndexEntry{}, blockPosition + int64(nlidx), err
 		}
@@ -152,31 +152,31 @@ func processBlock(reader io.ReaderAt, buf []byte, bytesread int, blockPosition i
 	return entry, blockPosition, nil
 }
 
-// deriveDelimiter guesses an appropriate delimiter from filename
-func deriveDelimiter(filename string) byte {
+// deriveDelimiter tries to guess an appropriate delimiter from filename
+// It returns the delimiter on success, or an error on failure.
+func deriveDelimiter(filename string) ([]byte, error) {
 	reCSV := regexp.MustCompile(`\.csv(\.zst)?$`)
 	rePSV := regexp.MustCompile(`\.psv(\.zst)?$`)
 	reTSV := regexp.MustCompile(`\.tsv(\.zst)?$`)
 	if reCSV.MatchString(filename) {
-		return ','
+		return []byte{','}, nil
 	}
 	if rePSV.MatchString(filename) {
-		return '|'
+		return []byte{'|'}, nil
 	}
 	if reTSV.MatchString(filename) {
-		return tabDelimiter
+		return []byte{'\t'}, nil
 	}
-	// Default to the nullDelimiter
-	return nullDelimiter
+	return []byte{}, errors.New("cannot guess delimiter from filename")
 }
 
 // NewIndex creates a new Index for the filename dataset from scratch
 func NewIndex(filename string) (*Index, error) {
-	return NewIndexDelim(filename, undefDelimiter)
+	return NewIndexDelim(filename, []byte{})
 }
 
 // NewIndex creates a new Index for filename with delim as the delimiter
-func NewIndexDelim(filename string, delim byte) (*Index, error) {
+func NewIndexDelim(filename string, delim []byte) (*Index, error) {
 	reader, err := os.Open(filename)
 	if err != nil {
 		return nil, err
@@ -190,8 +190,11 @@ func NewIndexDelim(filename string, delim byte) (*Index, error) {
 		return nil, err
 	}
 
-	if delim == undefDelimiter {
-		delim = deriveDelimiter(filename)
+	if len(delim) == 0 {
+		delim, err = deriveDelimiter(filename)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	index := Index{}
@@ -214,7 +217,8 @@ func NewIndexDelim(filename string, delim byte) (*Index, error) {
 			return nil, err
 		}
 		if bytesread > 0 {
-			entry, blockPosition, err = processBlock(reader, buf, bytesread, blockPosition, index.Delimiter, err == io.EOF)
+			entry, blockPosition, err = processBlock(reader, buf, bytesread,
+				blockPosition, delim, err == io.EOF)
 			if err != nil {
 				return nil, err
 			}
@@ -320,9 +324,9 @@ func (i *Index) BlockEntry(b []byte) (int, IndexEntry) {
 	begin = 0
 	end = len(list) - 1
 
-	// Remove final byte of `b` if it is our delimiter
-	if b[len(b)-1] == i.Delimiter {
-		b = b[:len(b)-1]
+	// Trim trailing delimiter
+	if bytes.HasSuffix(b, i.Delimiter) {
+		b = bytes.TrimSuffix(b, i.Delimiter)
 	}
 
 	for end-begin > 0 {

@@ -8,6 +8,7 @@ package bsearch
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 )
 
@@ -31,7 +32,7 @@ func NewDB(filename, delim string) (*DB, error) {
 
 	// FIXME: If the searcher has an index with a different delimiter,
 	// we have a problem
-	//if bss.Index != nil && bss.Index.Delimiter != delim {
+	//if bss.Index != nil && string(bss.Index.Delimiter) != delim {
 	//    return nil, errors.New("NewDB delimiter does not not match index delimiter!")
 	//}
 
@@ -41,29 +42,19 @@ func NewDB(filename, delim string) (*DB, error) {
 // Get returns the (first) value associated with key in db
 // (or ErrNotFound if missing)
 func (db *DB) Get(key []byte) ([]byte, error) {
-	lookup := key
-	// If we just lookup by key (no delim), we must trim it from result
-	trimPrefix := db.delim
-
-	// If the underlying index is not using a delimiter, add ours
-	if db.bss.Index != nil && db.bss.Index.Delimiter == 0 {
-		lookup = append(key, db.delim...)
-		trimPrefix = []byte{} // no trim required
-	}
-
-	line, err := db.bss.Line(lookup)
+	line, err := db.bss.Line(key)
 	if err != nil {
 		return nil, err
 	}
 
-	line = bytes.TrimPrefix(line, lookup)
-
-	// If trimPrefix is set, it must match the beginning of line,
-	// or we have no match
-	if len(trimPrefix) > 0 && !bytes.HasPrefix(line, trimPrefix) {
-		return nil, ErrNotFound
+	// Remove leading key+delimiter from line
+	prefix := append(key, db.bss.Index.Delimiter...)
+	// Sanity check
+	if !bytes.HasPrefix(line, prefix) {
+		panic(fmt.Sprintf("line returned for %q does not begin with key+delim: %s\n",
+			key, line))
 	}
-	line = bytes.TrimPrefix(line, trimPrefix)
+	line = bytes.TrimPrefix(line, prefix)
 
 	return line, nil
 }

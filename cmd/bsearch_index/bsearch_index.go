@@ -44,15 +44,6 @@ func vprintf(format string, args ...interface{}) {
 	}
 }
 
-func convertDelimiter(delim string) byte {
-	bytes := []byte(delim)
-	if len(bytes) != 1 {
-		// FIXME: does an empty string make sense?
-		log.Fatal("delimiter must be a single-byte character")
-	}
-	return bytes[0]
-}
-
 func main() {
 	// Parse options
 	_, err := parser.Parse()
@@ -90,8 +81,7 @@ func main() {
 	}
 
 	// Generate and write index
-	delim := convertDelimiter(opts.Delim)
-	index, err := bsearch.NewIndexDelim(opts.Args.Filename, delim)
+	index, err := bsearch.NewIndexDelim(opts.Args.Filename, []byte(opts.Delim))
 	if err != nil {
 		log.Fatal(err)
 	}
