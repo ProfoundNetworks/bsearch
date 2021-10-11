@@ -27,18 +27,9 @@ const (
 	indexSuffix = "bsx"
 )
 
-type IndexSemantics int
-
-const (
-	IndexUnset IndexSemantics = iota
-	IndexNone
-	IndexRequired
-	IndexCreate
-)
-
 var (
-	ErrNoIndexFound = errors.New("No index file found")
-	ErrIndexExpired = errors.New("Index is out of date")
+	ErrIndexNotFound = errors.New("Index file not found")
+	ErrIndexExpired  = errors.New("Index file out of date")
 )
 
 type IndexEntry struct {

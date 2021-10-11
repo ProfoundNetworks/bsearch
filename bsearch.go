@@ -39,7 +39,6 @@ type Options struct {
 	Compare   func(a, b []byte) int // prefix comparison function
 	Header    bool                  // first line of dataset is header and should be ignored
 	MatchLE   bool                  // LinePosition uses less-than-or-equal-to match semantics
-	Index     IndexSemantics        // Index semantics: 1=Require, 2=Create, 3=None
 	Logger    *zerolog.Logger       // debug logger
 }
 
@@ -53,7 +52,6 @@ type Searcher struct {
 	dbuf       []byte                // decompressed data buffer
 	dbufOffset int64                 // decompressed data buffer offset
 	filepath   string                // filename path
-	indexOpt   IndexSemantics        // index option: 1=Require, 2=Create, 3=None
 	Index      *Index                // optional block index
 	compare    func(a, b []byte) int // prefix comparison function
 	header     bool                  // first line of dataset is header and should be ignored
@@ -75,9 +73,6 @@ func (s *Searcher) setOptions(options Options) {
 	}
 	if options.MatchLE {
 		s.matchLE = true
-	}
-	if options.Index > 0 && options.Index <= 3 {
-		s.indexOpt = options.Index
 	}
 	if options.Logger != nil {
 		s.logger = options.Logger
@@ -151,16 +146,8 @@ func NewSearcherOptions(filename string, options Options) (*Searcher, error) {
 	}
 	s.setOptions(options)
 
-	// Discard index if s.indexOpt == IndexNone
-	if s.Index != nil && s.indexOpt == IndexNone {
-		s.Index = nil
-	}
-	// Return an error if s.indexOpt == IndexRequired and we have no index
-	if s.Index == nil && s.indexOpt == IndexRequired {
-		return nil, ErrNoIndexFound
-	}
-	// If we have no index and IndexCreate is specified, create one
-	if s.Index == nil && s.indexOpt == IndexCreate {
+	// If we have no index, create (a throwaway) one
+	if s.Index == nil {
 		index, err := NewIndex(filename)
 		if err != nil {
 			return nil, err
