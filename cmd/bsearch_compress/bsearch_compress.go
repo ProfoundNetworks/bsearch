@@ -135,12 +135,18 @@ func main() {
 	}
 
 	// Generate (uncompressed) index if not found
-	uip := bsearch.IndexPath(opts.Args.Filename)
+	uip, err := bsearch.IndexPath(opts.Args.Filename)
+	if err != nil {
+		log.Fatal(err)
+	}
 	vprintf("+ uip: %s\n", uip)
 	uidx := loadIndex(uip)
 
 	// Generate a new index for the compressed dataset
-	zip := bsearch.IndexPath(zfile)
+	zip, err := bsearch.IndexPath(zfile)
+	if err != nil {
+		log.Fatal(err)
+	}
 	vprintf("+ zip: %s\n", zip)
 	zidx := &bsearch.Index{}
 	copier.Copy(zidx, uidx)

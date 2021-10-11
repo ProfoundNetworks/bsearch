@@ -56,17 +56,22 @@ func epoch(filename string) (int64, error) {
 	return stat.ModTime().Unix(), nil
 }
 
-// IndexFile returns the index file associated with filename
-func IndexFile(filename string) string {
+// indexFile returns the index file associated with filename
+func indexFile(filename string) string {
 	reDot := regexp.MustCompile(`\.`)
-	basename := reDot.ReplaceAllString(filepath.Base(filename), "_")
-	idxfile := basename + "." + indexSuffix
-	return idxfile
+	basename := reDot.ReplaceAllString(filename, "_")
+	return basename + "." + indexSuffix
 }
 
-// IndexPath returns index path assocated with filename
-func IndexPath(filename string) string {
-	return filepath.Join(filepath.Dir(filename), IndexFile(filename))
+// IndexPath returns the filepath of the index assocated with filename
+func IndexPath(path string) (string, error) {
+	var err error
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	dir, base := filepath.Split(path)
+	return filepath.Join(dir, indexFile(base)), nil
 }
 
 // processBlock processes the block in buf[:bytesread] and returns an IndexEntry
@@ -250,13 +255,16 @@ func NewIndexDelim(filename string, delim []byte) (*Index, error) {
 	return &index, nil
 }
 
-// LoadIndex loads Index from the associated index file for filename.
+// LoadIndex loads Index from the associated index file for filepath.
 // Returns ErrNotFound if no index file exists.
-// Returns ErrIndexExpired if filename is newer than the index file.
-func LoadIndex(filename string) (*Index, error) {
-	idxpath := filepath.Join(filepath.Dir(filename), IndexFile(filename))
+// Returns ErrIndexExpired if filepath is newer than the index file.
+func LoadIndex(filepath string) (*Index, error) {
+	idxpath, err := IndexPath(filepath)
+	if err != nil {
+		return nil, err
+	}
 
-	_, err := os.Stat(idxpath)
+	_, err = os.Stat(idxpath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, ErrNotFound
@@ -282,7 +290,7 @@ func LoadIndex(filename string) (*Index, error) {
 	yaml.Unmarshal(data, &index)
 
 	// Check index.Epoch is still valid
-	fe, err := epoch(filename)
+	fe, err := epoch(filepath)
 	if err != nil {
 		return nil, err
 	}
@@ -349,7 +357,7 @@ func (i *Index) Write() error {
 		return err
 	}
 
-	idxpath := filepath.Join(i.Filedir, IndexFile(i.Filename))
+	idxpath := filepath.Join(i.Filedir, indexFile(i.Filename))
 	var writer io.WriteCloser
 	fh, err := os.OpenFile(idxpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {

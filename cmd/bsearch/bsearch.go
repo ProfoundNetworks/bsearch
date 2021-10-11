@@ -82,11 +82,13 @@ func main() {
 	if err != nil {
 		die(err.Error())
 	}
-	if bss.Index != nil {
-		log.Info().
-			Str("path", bsearch.IndexPath(opts.Args.Filename)).
-			Msg("using index")
+	idxpath, err := bsearch.IndexPath(opts.Args.Filename)
+	if err != nil {
+		die(err.Error())
 	}
+	log.Info().
+		Str("path", idxpath).
+		Msg("using index")
 
 	searchStr := opts.Args.SearchString
 	if opts.Rev {
