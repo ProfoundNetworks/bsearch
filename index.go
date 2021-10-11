@@ -28,8 +28,8 @@ const (
 )
 
 var (
-	ErrIndexNotFound = errors.New("Index file not found")
-	ErrIndexExpired  = errors.New("Index file out of date")
+	ErrIndexNotFound = errors.New("index file not found")
+	ErrIndexExpired  = errors.New("index file out of date")
 )
 
 type IndexEntry struct {
@@ -163,7 +163,7 @@ func deriveDelimiter(filename string) ([]byte, error) {
 	if reTSV.MatchString(filename) {
 		return []byte{'\t'}, nil
 	}
-	return []byte{}, errors.New("cannot guess delimiter from filename")
+	return []byte{}, ErrUnknownDelimiter
 }
 
 // NewIndex creates a new Index for the filename dataset from scratch

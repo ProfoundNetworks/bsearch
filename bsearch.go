@@ -29,7 +29,7 @@ var (
 	ErrNotFound            = errors.New("not found")
 	ErrKeyExceedsBlocksize = errors.New("key length exceeds blocksize")
 	ErrNotFile             = errors.New("filename exists but is not a file")
-	ErrCompressedNoIndex   = errors.New("compressed file without an index file")
+	ErrUnknownDelimiter    = errors.New("cannot guess delimiter from filename")
 )
 
 var reCompressed = regexp.MustCompile(`\.zst$`)
@@ -459,7 +459,7 @@ func (s *Searcher) scanCompressedLines(k []byte, n int) ([][]byte, error) {
 func (s *Searcher) LinesN(k []byte, n int) ([][]byte, error) {
 	if s.isCompressed() {
 		if s.Index == nil {
-			return [][]byte{}, ErrCompressedNoIndex
+			return [][]byte{}, ErrIndexNotFound
 		}
 		return s.scanCompressedLines(k, n)
 	}
