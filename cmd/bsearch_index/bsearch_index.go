@@ -22,7 +22,7 @@ import (
 // Options
 var opts struct {
 	Verbose bool   `short:"v" long:"verbose" description:"display verbose debug output"`
-	Delim   string `short:"t" long:"sep"     description:"separator/delimiter character" default:","`
+	Delim   string `short:"t" long:"sep"     description:"separator/delimiter character"`
 	Force   bool   `short:"f" long:"force"   description:"force index generation even if up-to-date"`
 	Cat     bool   `short:"c" long:"cat"     description:"write generated index to stdout instead of to file"`
 	Args    struct {
