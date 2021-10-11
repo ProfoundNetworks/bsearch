@@ -98,7 +98,7 @@ func main() {
 	// Search
 	results, err := bss.Lines([]byte(searchStr))
 	if err != nil {
-		if err == bsearch.ErrCompressedNoIndex {
+		if err == bsearch.ErrIndexNotFound {
 			die("Error: compressed dataset without index - recompress using bsearch_compress.")
 		}
 		die("Error: " + err.Error())

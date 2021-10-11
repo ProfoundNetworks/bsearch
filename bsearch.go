@@ -37,7 +37,7 @@ var reCompressed = regexp.MustCompile(`\.zst$`)
 type Options struct {
 	Blocksize int64           // data blocksize used for binary search
 	Header    bool            // first line of dataset is header and should be ignored
-	MatchLE   bool            // LinePosition uses less-than-or-equal-to match semantics
+	MatchLE   bool            // use less-than-or-equal-to match semantics
 	Logger    *zerolog.Logger // debug logger
 }
 
