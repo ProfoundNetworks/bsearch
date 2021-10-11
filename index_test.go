@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Test NewIndexLoad()
-func TestIndexLoad(t *testing.T) {
+// Test LoadIndex()
+func TestLoadIndex(t *testing.T) {
 	var tests = []struct {
 		filename string
 		delim    string
@@ -19,7 +19,7 @@ func TestIndexLoad(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		idx, err := NewIndexLoad(tc.filename)
+		idx, err := LoadIndex(tc.filename)
 		if err != nil {
 			t.Fatalf("%s: %s\n", tc.filename, err.Error())
 		}

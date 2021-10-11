@@ -124,7 +124,7 @@ func NewSearcher(filename string) (*Searcher, error) {
 	}
 
 	// Load index if one exists
-	index, _ := NewIndexLoad(filename)
+	index, _ := LoadIndex(filename)
 	if index != nil {
 		s.Index = index
 	}

@@ -61,7 +61,7 @@ func epoch(filename string) (int64, error) {
 func loadIndex(indexPath string) *bsearch.Index {
 	_, err := os.Stat(indexPath)
 	if err == nil {
-		index, err := bsearch.NewIndexLoad(opts.Args.Filename)
+		index, err := bsearch.LoadIndex(opts.Args.Filename)
 		if err != nil {
 			log.Fatal(err)
 		}

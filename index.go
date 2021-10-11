@@ -250,10 +250,10 @@ func NewIndexDelim(filename string, delim []byte) (*Index, error) {
 	return &index, nil
 }
 
-// NewIndexLoad loads Index from the associated index file for filename.
+// LoadIndex loads Index from the associated index file for filename.
 // Returns ErrNotFound if no index file exists.
 // Returns ErrIndexExpired if filename is newer than the index file.
-func NewIndexLoad(filename string) (*Index, error) {
+func LoadIndex(filename string) (*Index, error) {
 	idxpath := filepath.Join(filepath.Dir(filename), IndexFile(filename))
 
 	_, err := os.Stat(idxpath)

@@ -73,7 +73,7 @@ func main() {
 
 	// Noop if a valid index already exists (unless --force is specified)
 	if !opts.Force && !opts.Cat {
-		_, err = bsearch.NewIndexLoad(opts.Args.Filename)
+		_, err = bsearch.LoadIndex(opts.Args.Filename)
 		if err == nil {
 			vprintf("+ index file found and up to date\n")
 			os.Exit(0)
