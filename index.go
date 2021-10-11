@@ -328,7 +328,7 @@ func (i *Index) BlockEntry(b []byte) (int, IndexEntry) {
 		}
 		//fmt.Fprintf(os.Stderr, "+ %s: begin %d, end %d, mid %d\n", string(b), begin, end, mid)
 
-		cmp := PrefixCompare([]byte(list[mid].Key), b)
+		cmp := prefixCompare([]byte(list[mid].Key), b)
 		//fmt.Fprintf(os.Stderr, "+ %s: [%d] comparing vs. %q, cmp %d\n", string(b), mid, list[mid].Key, cmp)
 		if cmp == -1 {
 			begin = mid

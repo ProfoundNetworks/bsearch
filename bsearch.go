@@ -35,38 +35,33 @@ var (
 var reCompressed = regexp.MustCompile(`\.zst$`)
 
 type Options struct {
-	Blocksize int64                 // data blocksize used for binary search
-	Compare   func(a, b []byte) int // prefix comparison function
-	Header    bool                  // first line of dataset is header and should be ignored
-	MatchLE   bool                  // LinePosition uses less-than-or-equal-to match semantics
-	Logger    *zerolog.Logger       // debug logger
+	Blocksize int64           // data blocksize used for binary search
+	Header    bool            // first line of dataset is header and should be ignored
+	MatchLE   bool            // LinePosition uses less-than-or-equal-to match semantics
+	Logger    *zerolog.Logger // debug logger
 }
 
 // Searcher provides binary search functionality for line-ordered byte streams by prefix.
 type Searcher struct {
-	r          io.ReaderAt           // data reader
-	l          int64                 // data length
-	blocksize  int64                 // data blocksize used for binary search
-	buf        []byte                // data buffer
-	bufOffset  int64                 // data buffer offset
-	dbuf       []byte                // decompressed data buffer
-	dbufOffset int64                 // decompressed data buffer offset
-	filepath   string                // filename path
-	Index      *Index                // optional block index
-	compare    func(a, b []byte) int // prefix comparison function
-	header     bool                  // first line of dataset is header and should be ignored
-	boundary   bool                  // search string must be followed by a word boundary
-	matchLE    bool                  // LinePosition uses less-than-or-equal-to match semantics
-	logger     *zerolog.Logger       // debug logger
+	r          io.ReaderAt     // data reader
+	l          int64           // data length
+	blocksize  int64           // data blocksize used for binary search
+	buf        []byte          // data buffer
+	bufOffset  int64           // data buffer offset
+	dbuf       []byte          // decompressed data buffer
+	dbufOffset int64           // decompressed data buffer offset
+	filepath   string          // filename path
+	Index      *Index          // optional block index
+	header     bool            // first line of dataset is header and should be ignored
+	boundary   bool            // search string must be followed by a word boundary
+	matchLE    bool            // LinePosition uses less-than-or-equal-to match semantics
+	logger     *zerolog.Logger // debug logger
 }
 
 // setOptions sets the given options on searcher
 func (s *Searcher) setOptions(options Options) {
 	if options.Blocksize > 0 {
 		s.blocksize = options.Blocksize
-	}
-	if options.Compare != nil {
-		s.compare = options.Compare
 	}
 	if options.Header {
 		s.header = true
@@ -125,7 +120,6 @@ func NewSearcher(filename string) (*Searcher, error) {
 		buf:        make([]byte, defaultBlocksize+1),
 		bufOffset:  -1,
 		dbufOffset: -1,
-		compare:    PrefixCompare,
 		filepath:   filename,
 	}
 
@@ -239,7 +233,7 @@ func (s *Searcher) scanLineOffset(buf []byte, k []byte) (int, bool) {
 	// Scan lines until we find one >= b
 	for offset < len(buf) {
 		offsetPrefix := getNBytesFrom(buf[offset:], len(k), delim)
-		cmp := s.compare(offsetPrefix, k)
+		cmp := prefixCompare(offsetPrefix, k)
 		/*
 			if s.logger != nil {
 				s.logger.Trace().
@@ -301,7 +295,7 @@ func (s *Searcher) scanLinesMatching(buf, k []byte, n int) ([][]byte, bool) {
 		}
 
 		offsetPrefix := getNBytesFrom(buf[offset:], len(k), delim)
-		cmp := s.compare(offsetPrefix, k)
+		cmp := prefixCompare(offsetPrefix, k)
 		nlidx := bytes.IndexByte(buf[offset:], '\n')
 		/*
 			if s.logger != nil {
@@ -502,10 +496,10 @@ func (s *Searcher) Close() {
 	}
 }
 
-// PrefixCompare compares the initial sequence of bufa matches b
+// prefixCompare compares the initial sequence of bufa matches b
 // (up to len(b) only).
 // Used as the default compare function in NewSearcher.
-func PrefixCompare(bufa, b []byte) int {
+func prefixCompare(bufa, b []byte) int {
 	// If len(bufa) < len(b) we compare up to len(bufa), but disallow equality
 	if len(bufa) < len(b) {
 		cmp := bytes.Compare(bufa, b[:len(bufa)])
@@ -517,36 +511,6 @@ func PrefixCompare(bufa, b []byte) int {
 	}
 
 	return bytes.Compare(bufa[:len(b)], b)
-}
-
-// PrefixCompareString compares the initial bytes of bufa matches b
-// (up to len(b) only), after conversion to strings.
-// Can be used as the compare function via NewSearcherOptions.
-func PrefixCompareString(bufa, b []byte) int {
-	sa := string(bufa)
-	sb := string(b)
-
-	// If len(sa) < len(sb) we compare up to len(sa), but disallow equality
-	if len(sa) < len(sb) {
-		sb = sb[:len(sa)]
-		switch {
-		case sa < sb:
-			return -1
-		case sa == sb:
-			// An equal match here is short, so actually a less than
-			return -1
-		}
-		return 1
-	}
-
-	sa = sa[:len(sb)]
-	switch {
-	case sa < sb:
-		return -1
-	case sa == sb:
-		return 0
-	}
-	return 1
 }
 
 // clone returns a copy of the given byte slice
