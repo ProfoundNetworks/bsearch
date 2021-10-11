@@ -38,7 +38,6 @@ type Options struct {
 	Blocksize int64                 // data blocksize used for binary search
 	Compare   func(a, b []byte) int // prefix comparison function
 	Header    bool                  // first line of dataset is header and should be ignored
-	Boundary  bool                  // search string must be followed by a word boundary
 	MatchLE   bool                  // LinePosition uses less-than-or-equal-to match semantics
 	Index     IndexSemantics        // Index semantics: 1=Require, 2=Create, 3=None
 	Logger    *zerolog.Logger       // debug logger
@@ -60,7 +59,6 @@ type Searcher struct {
 	header     bool                  // first line of dataset is header and should be ignored
 	boundary   bool                  // search string must be followed by a word boundary
 	matchLE    bool                  // LinePosition uses less-than-or-equal-to match semantics
-	reWord     *regexp.Regexp        // regexp used for boundary matching
 	logger     *zerolog.Logger       // debug logger
 }
 
@@ -74,10 +72,6 @@ func (s *Searcher) setOptions(options Options) {
 	}
 	if options.Header {
 		s.header = true
-	}
-	if options.Boundary {
-		s.boundary = true
-		s.reWord = regexp.MustCompile(`\w`)
 	}
 	if options.MatchLE {
 		s.matchLE = true
@@ -505,37 +499,6 @@ func (s *Searcher) LinesN(k []byte, n int) ([][]byte, error) {
 // slice b, using a binary search (data must be bytewise-ordered).
 func (s *Searcher) Lines(b []byte) ([][]byte, error) {
 	return s.LinesN(b, 0)
-}
-
-// checkPrefixMatch checks that the initial sequences of bufa matches b
-// (up to len(b) only).
-// Returns an error if the bufa prefix < b (the underlying data is
-// incorrectly sorted), returns brk=true if bufa prefix > b, and a
-// copy of bufa if bufa prefix == b.
-func (s *Searcher) checkPrefixMatch(bufa, b []byte) (clonea []byte, brk bool, err error) {
-	cmp := PrefixCompare(bufa, b)
-	if cmp < 0 {
-		// This should never happen unless the file is wrongly sorted
-		return []byte{}, false,
-			fmt.Errorf("Error: badly sorted file? (%q < expected %q)", bufa, b)
-	} else if cmp > 0 {
-		// End of matching lines - we're done
-		return []byte{}, true, nil
-	}
-
-	// Prefix matches. If s.Boundary is set we also require a word boundary.
-	if s.boundary && len(bufa) > len(b) {
-		// FIXME: this might need to done rune-wise, rather than byte-wise?
-		blast := bufa[len(b)-1 : len(b)]
-		bnext := bufa[len(b) : len(b)+1]
-		if (s.reWord.Match(blast) && s.reWord.Match(bnext)) ||
-			(!s.reWord.Match(blast) && !s.reWord.Match(bnext)) {
-			// Returning an empty byteslice here will cause this line to be skipped
-			return []byte{}, false, nil
-		}
-	}
-
-	return clone(bufa), false, nil
 }
 
 /*

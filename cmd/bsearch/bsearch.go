@@ -15,12 +15,10 @@ import (
 
 // Options
 var opts struct {
-	Verbose  []bool `short:"v" long:"verbose" description:"display verbose debug output"`
-	Header   bool   `short:"H" long:"hdr" description:"ignore first line (header) in Filename when doing lookups"`
-	Rev      bool   `short:"r" long:"rev" description:"reverse SearchString for search, and reverse output lines when printing"`
-	Boundary bool   `short:"b" long:"boundary" description:"require SearchString to be followed by a word boundary (a word-nonword transition)"`
-	//Utf8  bool   `short:"u" long:"utf8" description:"use utf8 string comparisons instead of (default) bytewise-compare"`
-	Args struct {
+	Verbose []bool `short:"v" long:"verbose" description:"display verbose debug output"`
+	Header  bool   `short:"H" long:"hdr" description:"ignore first line (header) in Filename when doing lookups"`
+	Rev     bool   `short:"r" long:"rev" description:"reverse SearchString for search, and reverse output lines when printing"`
+	Args    struct {
 		SearchString string
 		Filename     string
 	} `positional-args:"yes" required:"yes"`
@@ -75,7 +73,7 @@ func main() {
 	}
 
 	// Instantiate searcher
-	o := bsearch.Options{Header: opts.Header, Boundary: opts.Boundary}
+	o := bsearch.Options{Header: opts.Header}
 	if len(opts.Verbose) > 0 {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 		o.Logger = &log.Logger
