@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Test Line() using testdata/rdns1.csv, existing keys
-func TestLine1(t *testing.T) {
+// Test Searcher.Line() using testdata/rdns1.csv, existing keys
+func TestSearcherLine1(t *testing.T) {
 	var tests = []struct {
 		key    string
 		expect string
@@ -42,8 +42,8 @@ func TestLine1(t *testing.T) {
 	}
 }
 
-// Test Line() using testdata/domains1.csv (no header)
-func TestLine2(t *testing.T) {
+// Test Searcher.Line() using testdata/domains1.csv (no header)
+func TestSearcherLine2(t *testing.T) {
 	var tests = []struct {
 		key    string
 		expect string
@@ -78,8 +78,8 @@ func TestLine2(t *testing.T) {
 	}
 }
 
-// Test Line() using testdata/domains2.csv (header)
-func TestLine3(t *testing.T) {
+// Test Searcher.Line() using testdata/domains2.csv (header)
+func TestSearcherLine3(t *testing.T) {
 	var tests = []struct {
 		key    string
 		expect string
@@ -118,8 +118,8 @@ func TestLine3(t *testing.T) {
 	}
 }
 
-// Test Lines() using testdata/alstom1.csv (no header)
-func TestLines1(t *testing.T) {
+// Test Searcher.Lines() using testdata/alstom1.csv (no header)
+func TestSearcherLines1(t *testing.T) {
 	var tests = []struct {
 		key    string
 		expect string
@@ -161,8 +161,8 @@ alstom.com,alstom.com,ULT
 	}
 }
 
-// Test Lines() using testdata/alstom2.csv (header)
-func TestLines2(t *testing.T) {
+// Test Searcher.Lines() using testdata/alstom2.csv (header)
+func TestSearcherLines2(t *testing.T) {
 	var tests = []struct {
 		key    string
 		expect string
@@ -200,8 +200,9 @@ alstom.com,alstom.com,ULT
 	}
 }
 
-// Test Lines() using testdata/alstom3.csv (with header, multiple blocks, next block 1)
-func TestLinesMultiBlock1(t *testing.T) {
+// Test Searcher.Lines() using testdata/alstom3.csv
+// (with header, multiple blocks, next block 1)
+func TestSearcherLinesMultiBlock1(t *testing.T) {
 	var tests = []struct {
 		key        string
 		first_line string
@@ -242,8 +243,9 @@ func TestLinesMultiBlock1(t *testing.T) {
 	}
 }
 
-// Test Lines() using testdata/alstom3.csv (with header, multiple blocks, next block 2)
-func TestLinesMultiBlock2(t *testing.T) {
+// Test Searcher.Lines() using testdata/alstom3.csv
+// (with header, multiple blocks, next block 2)
+func TestSearcherLinesMultiBlock2(t *testing.T) {
 	var tests = []struct {
 		key        string
 		first_line string
@@ -278,8 +280,8 @@ func TestLinesMultiBlock2(t *testing.T) {
 	}
 }
 
-// Test Lines() (without header, multiple blocks, starting block 1)
-func TestLinesMultiBlock3(t *testing.T) {
+// Test Searcher.Lines() (without header, multiple blocks, starting block 1)
+func TestSearcherLinesMultiBlock3(t *testing.T) {
 	var tests = []struct {
 		key        string
 		first_line string
@@ -314,8 +316,8 @@ func TestLinesMultiBlock3(t *testing.T) {
 	}
 }
 
-// Benchmark Lines()
-func BenchmarkLines(b *testing.B) {
+// Benchmark Searcher.Lines()
+func BenchmarkSearcherLines(b *testing.B) {
 	bss, err := NewSearcher("testdata/rdns1.csv")
 	if err != nil {
 		b.Fatal(err)

@@ -38,6 +38,7 @@ type IndexEntry struct {
 	Length int64  `yaml:"l"`
 }
 
+// Index provides index metadata to Filename
 type Index struct {
 	Delimiter []byte       `yaml:"delim"`
 	Epoch     int64        `yaml:"epoch"`
@@ -47,9 +48,9 @@ type Index struct {
 	List      []IndexEntry `yaml:"list"`
 }
 
-// epoch returns the modtime for filename in epoch/unix format
-func epoch(filename string) (int64, error) {
-	stat, err := os.Stat(filename)
+// epoch returns the modtime for path in epoch/unix format
+func epoch(path string) (int64, error) {
+	stat, err := os.Stat(path)
 	if err != nil {
 		return 0, err
 	}
@@ -63,7 +64,7 @@ func indexFile(filename string) string {
 	return basename + "." + indexSuffix
 }
 
-// IndexPath returns the filepath of the index assocated with filename
+// IndexPath returns the filepath of the index assocated with path
 func IndexPath(path string) (string, error) {
 	var err error
 	path, err = filepath.Abs(path)
@@ -166,28 +167,28 @@ func deriveDelimiter(filename string) ([]byte, error) {
 	return []byte{}, ErrUnknownDelimiter
 }
 
-// NewIndex creates a new Index for the filename dataset from scratch
-func NewIndex(filename string) (*Index, error) {
-	return NewIndexDelim(filename, []byte{})
+// NewIndex creates a new Index for the path dataset
+func NewIndex(path string) (*Index, error) {
+	return NewIndexDelim(path, []byte{})
 }
 
-// NewIndex creates a new Index for filename with delim as the delimiter
-func NewIndexDelim(filename string, delim []byte) (*Index, error) {
-	reader, err := os.Open(filename)
+// NewIndex creates a new Index for path with delim as the delimiter
+func NewIndexDelim(path string, delim []byte) (*Index, error) {
+	reader, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	epoch, err := epoch(filename)
+	epoch, err := epoch(path)
 	if err != nil {
 		return nil, err
 	}
-	filedir, err := filepath.Abs(filepath.Dir(filename))
+	filedir, err := filepath.Abs(filepath.Dir(path))
 	if err != nil {
 		return nil, err
 	}
 
 	if len(delim) == 0 {
-		delim, err = deriveDelimiter(filename)
+		delim, err = deriveDelimiter(path)
 		if err != nil {
 			return nil, err
 		}
@@ -197,7 +198,7 @@ func NewIndexDelim(filename string, delim []byte) (*Index, error) {
 	// index.Collation = "C"
 	index.Delimiter = delim
 	index.Epoch = epoch
-	index.Filename = filepath.Base(filename)
+	index.Filename = filepath.Base(path)
 	index.Filedir = filedir
 	index.Header = false
 
@@ -255,11 +256,11 @@ func NewIndexDelim(filename string, delim []byte) (*Index, error) {
 	return &index, nil
 }
 
-// LoadIndex loads Index from the associated index file for filepath.
+// LoadIndex loads Index from the associated index file for path.
 // Returns ErrNotFound if no index file exists.
-// Returns ErrIndexExpired if filepath is newer than the index file.
-func LoadIndex(filepath string) (*Index, error) {
-	idxpath, err := IndexPath(filepath)
+// Returns ErrIndexExpired if path is newer than the index file.
+func LoadIndex(path string) (*Index, error) {
+	idxpath, err := IndexPath(path)
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +291,7 @@ func LoadIndex(filepath string) (*Index, error) {
 	yaml.Unmarshal(data, &index)
 
 	// Check index.Epoch is still valid
-	fe, err := epoch(filepath)
+	fe, err := epoch(path)
 	if err != nil {
 		return nil, err
 	}

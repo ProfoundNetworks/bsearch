@@ -28,7 +28,7 @@ const (
 var (
 	ErrNotFound            = errors.New("not found")
 	ErrKeyExceedsBlocksize = errors.New("key length exceeds blocksize")
-	ErrNotFile             = errors.New("filename exists but is not a file")
+	ErrNotFile             = errors.New("filepath exists but is not a file")
 	ErrUnknownDelimiter    = errors.New("cannot guess delimiter from filename")
 )
 
@@ -41,7 +41,8 @@ type Options struct {
 	Logger    *zerolog.Logger // debug logger
 }
 
-// Searcher provides binary search functionality for line-ordered byte streams by prefix.
+// Searcher provides binary search functionality on byte-ordered CSV-style
+// delimited text files.
 type Searcher struct {
 	r          io.ReaderAt     // data reader
 	l          int64           // data length
@@ -51,9 +52,8 @@ type Searcher struct {
 	dbuf       []byte          // decompressed data buffer
 	dbufOffset int64           // decompressed data buffer offset
 	filepath   string          // filename path
-	Index      *Index          // optional block index
+	Index      *Index          // bsearch index
 	header     bool            // first line of dataset is header and should be ignored
-	boundary   bool            // search string must be followed by a word boundary
 	matchLE    bool            // LinePosition uses less-than-or-equal-to match semantics
 	logger     *zerolog.Logger // debug logger
 }
@@ -92,13 +92,13 @@ func (s *Searcher) isCompressed() bool {
 	return false
 }
 
-// NewSearcher returns a new Searcher for filename, using default options.
+// NewSearcher returns a new Searcher for path, using default options.
 // NewSearcher opens the file and determines its length using os.Open and
 // os.Stat - any errors are returned to the caller. The caller is responsible
 // for calling *Searcher.Close() when finished (e.g. via defer).
-func NewSearcher(filename string) (*Searcher, error) {
+func NewSearcher(path string) (*Searcher, error) {
 	// Get file length
-	stat, err := os.Stat(filename)
+	stat, err := os.Stat(path)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func NewSearcher(filename string) (*Searcher, error) {
 	filesize := stat.Size()
 
 	// Open file
-	fh, err := os.Open(filename)
+	fh, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
@@ -120,11 +120,11 @@ func NewSearcher(filename string) (*Searcher, error) {
 		buf:        make([]byte, defaultBlocksize+1),
 		bufOffset:  -1,
 		dbufOffset: -1,
-		filepath:   filename,
+		filepath:   path,
 	}
 
 	// Load index if one exists
-	index, _ := LoadIndex(filename)
+	index, _ := LoadIndex(path)
 	if index != nil {
 		s.Index = index
 	}
@@ -132,9 +132,9 @@ func NewSearcher(filename string) (*Searcher, error) {
 	return &s, nil
 }
 
-// NewSearcherOptions returns a new Searcher for filename f, using options.
-func NewSearcherOptions(filename string, options Options) (*Searcher, error) {
-	s, err := NewSearcher(filename)
+// NewSearcherOptions returns a new Searcher for path, using options.
+func NewSearcherOptions(path string, options Options) (*Searcher, error) {
+	s, err := NewSearcher(path)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +142,7 @@ func NewSearcherOptions(filename string, options Options) (*Searcher, error) {
 
 	// If we have no index, create (a throwaway) one
 	if s.Index == nil {
-		index, err := NewIndex(filename)
+		index, err := NewIndex(path)
 		if err != nil {
 			return nil, err
 		}
@@ -347,19 +347,6 @@ func (s *Searcher) Line(k []byte) ([]byte, error) {
 		return []byte{}, err
 	}
 	return lines[0], nil
-}
-
-// linesReadNextBlock is a helper function to read the next block and
-// distinguish between eof and other errors, to simplify processing.
-func linesReadNextBlock(r io.ReaderAt, b []byte, pos int64) (bytesread int, eof bool, err error) {
-	bytesread, err = r.ReadAt(b, pos)
-	if err != nil && err == io.EOF {
-		return bytesread, true, nil
-	}
-	if err != nil {
-		return bytesread, false, err
-	}
-	return bytesread, false, nil
 }
 
 // scanIndexedLines returns up to n lines in the reader that begin with
