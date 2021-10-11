@@ -293,23 +293,13 @@ func LoadIndex(filename string) (*Index, error) {
 	return &index, nil
 }
 
-// BlockPosition does a binary search on the block entries in the index
-// List and returns the offset of the last entry with a Key less than b.
-// If no such entry exists, it returns the offset of the first entry.
-// (This matches the main Searcher.BlockPosition semantics, which are
-// conservative because the first block may include a header.)
-func (i *Index) BlockPosition(b []byte) (int64, error) {
-	_, entry := i.BlockEntry(b)
-	return entry.Offset, nil
-}
-
-// BlockEntry does a binary search on the block entries in the index
+// blockEntry does a binary search on the block entries in the index
 // List and returns the last entry with a Key less than b, and its
 // position in the List.
 // FIXME: If no such entry exists, it returns the first entry.
-// (This matches the main Searcher.BlockPosition semantics, which are
+// (This matches the old Searcher.BlockPosition semantics, which were
 // conservative because the first block may include a header.)
-func (i *Index) BlockEntry(b []byte) (int, IndexEntry) {
+func (i *Index) blockEntry(b []byte) (int, IndexEntry) {
 	var begin, mid, end int
 	list := i.List
 	begin = 0
@@ -343,9 +333,9 @@ func (i *Index) BlockEntry(b []byte) (int, IndexEntry) {
 	return begin, list[begin]
 }
 
-// BlockEntryN returns the nth IndexEntry in index.List, and an ok flag,
+// blockEntryN returns the nth IndexEntry in index.List, and an ok flag,
 // which is false if no entry is found.
-func (i *Index) BlockEntryN(n int) (IndexEntry, bool) {
+func (i *Index) blockEntryN(n int) (IndexEntry, bool) {
 	if n < 0 || n >= len(i.List) {
 		return IndexEntry{}, false
 	}

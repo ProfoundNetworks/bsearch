@@ -367,7 +367,7 @@ func linesReadNextBlock(r io.ReaderAt, b []byte, pos int64) (bytesread int, eof 
 // Note that the index ensures blocks always finish cleanly on newlines.
 // Returns a slice of byte slices on success.
 func (s *Searcher) scanIndexedLines(k []byte, n int) ([][]byte, error) {
-	e, entry := s.Index.BlockEntry(k)
+	e, entry := s.Index.blockEntry(k)
 	if s.logger != nil {
 		s.logger.Debug().
 			Str("key", string(k)).
@@ -404,7 +404,7 @@ func (s *Searcher) scanIndexedLines(k []byte, n int) ([][]byte, error) {
 
 		// Check next block
 		e++
-		entry, ok = s.Index.BlockEntryN(e)
+		entry, ok = s.Index.blockEntryN(e)
 		if !ok {
 			break
 		}
@@ -423,7 +423,7 @@ func (s *Searcher) scanIndexedLines(k []byte, n int) ([][]byte, error) {
 // Returns a slice of byte slices on success, and an empty slice of
 // byte slices and an error on error.
 func (s *Searcher) scanCompressedLines(k []byte, n int) ([][]byte, error) {
-	e, entry := s.Index.BlockEntry(k)
+	e, entry := s.Index.blockEntry(k)
 
 	var lines, l [][]byte
 	var terminate, ok bool
@@ -445,7 +445,7 @@ func (s *Searcher) scanCompressedLines(k []byte, n int) ([][]byte, error) {
 			break
 		}
 
-		entry, ok = s.Index.BlockEntryN(e + 1)
+		entry, ok = s.Index.blockEntryN(e + 1)
 		if !ok {
 			break
 		}
