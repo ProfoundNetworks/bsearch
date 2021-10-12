@@ -19,7 +19,7 @@ func TestDBGet(t *testing.T) {
 		{"223.252.003.000", "223-252-3-0.as45671.net,202003,as45671.net"},
 	}
 
-	db, err := NewDB("testdata/rdns1.csv", ",")
+	db, err := NewDB("testdata/rdns1.csv")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestDBGetString(t *testing.T) {
 		{"223.252.003.000", "223-252-3-0.as45671.net,202003,as45671.net"},
 	}
 
-	db, err := NewDB("testdata/rdns1.csv", ",")
+	db, err := NewDB("testdata/rdns1.csv")
 	if err != nil {
 		t.Fatal(err)
 	}

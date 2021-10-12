@@ -1,42 +1,32 @@
 /*
-DB provides a key-value-store-like interface using bsearch.Searcher.
-Returns the first entry containing the given key.
+DB provides a sipmle key-value-store-like interface using bsearch.Searcher,
+returning the first first entry for a given key.
 */
 
 package bsearch
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 )
 
-// DB provides a key-value-store-like interface using bsearch.Searcher
+// DB provides a simple key-value-store-like interface using bsearch.Searcher,
+// returning the first value from path for a given key (if you need more
+// control you're encouraged to use bsearch.Searcher directly).
 type DB struct {
-	bss   *Searcher // searcher
-	delim []byte    // delimiter
+	bss *Searcher // searcher
 }
 
-// NewDB returns a new DB for filename, using delimiter to terminate keys.
-// The caller is responsible for calling DB.Close() when finished (e.g. via defer).
-func NewDB(filename, delim string) (*DB, error) {
-	if delim == "" {
-		return nil, errors.New("NewDB delimiter cannot be an empty string")
-	}
-
-	bss, err := NewSearcher(filename)
+// NewDB returns a new DB for the file at path. The caller is responsible
+// for calling DB.Close() when finished (e.g. via defer).
+func NewDB(path string) (*DB, error) {
+	bss, err := NewSearcher(path)
 	if err != nil {
 		return nil, err
 	}
 
-	// FIXME: If the searcher has an index with a different delimiter,
-	// we have a problem
-	//if bss.Index != nil && string(bss.Index.Delimiter) != delim {
-	//    return nil, errors.New("NewDB delimiter does not not match index delimiter!")
-	//}
-
-	return &DB{bss: bss, delim: []byte(delim)}, nil
+	return &DB{bss: bss}, nil
 }
 
 // Get returns the (first) value associated with key in db
@@ -51,8 +41,9 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 	prefix := append(key, db.bss.Index.Delimiter...)
 	// Sanity check
 	if !bytes.HasPrefix(line, prefix) {
-		panic(fmt.Sprintf("line returned for %q does not begin with key+delim: %s\n",
-			key, line))
+		panic(
+			fmt.Sprintf("line returned for %q does not begin with key+delim: %s\n",
+				key, line))
 	}
 	line = bytes.TrimPrefix(line, prefix)
 
