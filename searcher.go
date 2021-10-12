@@ -101,7 +101,6 @@ func NewSearcherOptions(path string, opt SearcherOptions) (*Searcher, error) {
 		return nil, ErrNotFile
 	}
 	filesize := stat.Size()
-	epoch := stat.ModTime().Unix()
 
 	// Open file
 	fh, err := os.Open(path)
@@ -121,25 +120,21 @@ func NewSearcherOptions(path string, opt SearcherOptions) (*Searcher, error) {
 
 	// Load index
 	s.Index, err = LoadIndex(path)
-	if err != nil && err != ErrNotFound {
+	if err != nil && err != ErrNotFound &&
+		err != ErrIndexExpired && err != ErrIndexPathMismatch {
 		return nil, err
 	}
 	if err == nil {
-		// Existing index found/loaded - sanity check. All checks must pass
-		// or we fallthrough and re-create the index below.
-		// Double-check path matches
-		if s.Index.Filepath == path &&
-			// Check explicit options match
-			(len(opt.Delimiter) == 0 ||
-				bytes.Compare(opt.Delimiter, s.Index.Delimiter) == 0) &&
-			(opt.Header == false || opt.Header == s.Index.Header) &&
-			// Check not out of date
-			epoch < s.Index.Epoch {
+		// Existing index found/loaded - sanity check against explicit options
+		// (or we fallthrough and re-create the index below)
+		if (len(opt.Delimiter) == 0 ||
+			bytes.Compare(opt.Delimiter, s.Index.Delimiter) == 0) &&
+			(opt.Header == false || opt.Header == s.Index.Header) {
 			return &s, nil
 		}
 	}
 
-	// ErrNotFound, or a bad index
+	// ErrNotFound, or an expired/mismatched index of some kind
 	idxopt := IndexOptions{
 		Delimiter: opt.Delimiter,
 		Header:    opt.Header,

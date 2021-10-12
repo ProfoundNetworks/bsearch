@@ -50,7 +50,8 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 	return line, nil
 }
 
-// GetString returns the (first) value associated with key in db, as a string (or ErrNotFound if missing)
+// GetString returns the (first) value associated with key in db, as a string
+// (or ErrNotFound if missing)
 func (db *DB) GetString(key string) (string, error) {
 	val, err := db.Get([]byte(key))
 	if err != nil {

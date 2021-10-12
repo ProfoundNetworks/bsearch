@@ -29,8 +29,9 @@ const (
 )
 
 var (
-	ErrIndexNotFound = errors.New("index file not found")
-	ErrIndexExpired  = errors.New("index file out of date")
+	ErrIndexNotFound     = errors.New("index file not found")
+	ErrIndexExpired      = errors.New("index file out of date")
+	ErrIndexPathMismatch = errors.New("index file path mismatch")
 )
 
 type IndexOptions struct {
@@ -263,9 +264,14 @@ func NewIndexOptions(path string, opt IndexOptions) (*Index, error) {
 }
 
 // LoadIndex loads Index from the associated index file for path.
-// Returns ErrNotFound if no index file exists.
+// Returns ErrIndexNotFound if no index file exists.
 // Returns ErrIndexExpired if path is newer than the index file.
+// Returns ErrIndexPathMismatch if index filepath does not equal path.
 func LoadIndex(path string) (*Index, error) {
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
 	idxpath, err := IndexPath(path)
 	if err != nil {
 		return nil, err
@@ -274,7 +280,7 @@ func LoadIndex(path string) (*Index, error) {
 	_, err = os.Stat(idxpath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, ErrNotFound
+			return nil, ErrIndexNotFound
 		} else {
 			return nil, err
 		}
@@ -295,6 +301,11 @@ func LoadIndex(path string) (*Index, error) {
 	}
 	index := Index{List: []IndexEntry{}}
 	yaml.Unmarshal(data, &index)
+
+	// Check index.Filepath == path
+	if index.Filepath != path {
+		return nil, ErrIndexPathMismatch
+	}
 
 	// Check index.Epoch is still valid
 	fe, err := epoch(path)
