@@ -81,7 +81,8 @@ func main() {
 	}
 
 	// Generate and write index
-	index, err := bsearch.NewIndexDelim(opts.Args.Filename, []byte(opts.Delim))
+	idxopt := bsearch.IndexOptions{Delimiter: []byte(opts.Delim)}
+	index, err := bsearch.NewIndexOptions(opts.Args.Filename, idxopt)
 	if err != nil {
 		log.Fatal(err)
 	}

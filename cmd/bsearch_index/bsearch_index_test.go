@@ -3,6 +3,7 @@ package main
 import (
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/ProfoundNetworks/bsearch"
@@ -10,13 +11,13 @@ import (
 )
 
 // Test the index generated for testdata/foo.csv
-func TestFooIndex(t *testing.T) {
+func TestIndexFoo(t *testing.T) {
 	index, err := bsearch.NewIndex("testdata/foo.csv")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	assert.Equal(t, "foo.csv", index.Filename)
+	assert.Equal(t, "foo.csv", filepath.Base(index.Filepath))
 	assert.Equal(t, 22, len(index.List))
 
 	fh, err := os.Open("testdata/foo.csv")

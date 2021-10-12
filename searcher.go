@@ -15,14 +15,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 
 	"github.com/DataDog/zstd"
 	"github.com/rs/zerolog"
-)
-
-const (
-	defaultBlocksize = 4096
 )
 
 var (
@@ -34,11 +31,12 @@ var (
 
 var reCompressed = regexp.MustCompile(`\.zst$`)
 
-type Options struct {
-	Blocksize int64           // data blocksize used for binary search
-	Header    bool            // first line of dataset is header and should be ignored
-	MatchLE   bool            // use less-than-or-equal-to match semantics
-	Logger    *zerolog.Logger // debug logger
+type SearcherOptions struct {
+	MatchLE bool            // use less-than-or-equal-to match semantics
+	Logger  *zerolog.Logger // debug logger
+	// Index options
+	Delimiter []byte // delimiter separating fields in dataset
+	Header    bool   // first line of dataset is header and should be ignored
 }
 
 // Searcher provides binary search functionality on byte-ordered CSV-style
@@ -46,26 +44,18 @@ type Options struct {
 type Searcher struct {
 	r          io.ReaderAt     // data reader
 	l          int64           // data length
-	blocksize  int64           // data blocksize used for binary search
 	buf        []byte          // data buffer
 	bufOffset  int64           // data buffer offset
 	dbuf       []byte          // decompressed data buffer
 	dbufOffset int64           // decompressed data buffer offset
 	filepath   string          // filename path
 	Index      *Index          // bsearch index
-	header     bool            // first line of dataset is header and should be ignored
 	matchLE    bool            // LinePosition uses less-than-or-equal-to match semantics
 	logger     *zerolog.Logger // debug logger
 }
 
 // setOptions sets the given options on searcher
-func (s *Searcher) setOptions(options Options) {
-	if options.Blocksize > 0 {
-		s.blocksize = options.Blocksize
-	}
-	if options.Header {
-		s.header = true
-	}
+func (s *Searcher) setOptions(options SearcherOptions) {
 	if options.MatchLE {
 		s.matchLE = true
 	}
@@ -75,29 +65,34 @@ func (s *Searcher) setOptions(options Options) {
 }
 
 // isCompressed returns true if there is an underlying file that is compressed
-// (and which also requires we have an associated index).
 func (s *Searcher) isCompressed() bool {
-	if s.filepath == "" && s.Index == nil {
-		return false
-	}
 	if s.filepath != "" {
 		if reCompressed.MatchString(s.filepath) {
 			return true
 		}
 		return false
 	}
-	if reCompressed.MatchString(s.Index.Filename) {
+	if reCompressed.MatchString(s.Index.Filepath) {
 		return true
 	}
 	return false
 }
 
-// NewSearcher returns a new Searcher for path, using default options.
-// NewSearcher opens the file and determines its length using os.Open and
-// os.Stat - any errors are returned to the caller. The caller is responsible
-// for calling *Searcher.Close() when finished (e.g. via defer).
+// NewSearcher returns a new Searcher for path using default options.
+// The caller is responsible for calling *Searcher.Close() when finished.
 func NewSearcher(path string) (*Searcher, error) {
-	// Get file length
+	return NewSearcherOptions(path, SearcherOptions{})
+}
+
+// NewSearcherOptions returns a new Searcher for path using opt.
+// The caller is responsible for calling *Searcher.Close() when finished.
+func NewSearcherOptions(path string, opt SearcherOptions) (*Searcher, error) {
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get file length and epoch
 	stat, err := os.Stat(path)
 	if err != nil {
 		return nil, err
@@ -106,6 +101,7 @@ func NewSearcher(path string) (*Searcher, error) {
 		return nil, ErrNotFile
 	}
 	filesize := stat.Size()
+	epoch := stat.ModTime().Unix()
 
 	// Open file
 	fh, err := os.Open(path)
@@ -116,44 +112,48 @@ func NewSearcher(path string) (*Searcher, error) {
 	s := Searcher{
 		r:          fh,
 		l:          filesize,
-		blocksize:  defaultBlocksize,
 		buf:        make([]byte, defaultBlocksize+1),
 		bufOffset:  -1,
 		dbufOffset: -1,
 		filepath:   path,
 	}
+	s.setOptions(opt)
 
-	// Load index if one exists
-	index, _ := LoadIndex(path)
-	if index != nil {
-		s.Index = index
+	// Load index
+	s.Index, err = LoadIndex(path)
+	if err != nil && err != ErrNotFound {
+		return nil, err
+	}
+	if err == nil {
+		// Existing index found/loaded - sanity check. All checks must pass
+		// or we fallthrough and re-create the index below.
+		// Double-check path matches
+		if s.Index.Filepath == path &&
+			// Check explicit options match
+			(len(opt.Delimiter) == 0 ||
+				bytes.Compare(opt.Delimiter, s.Index.Delimiter) == 0) &&
+			(opt.Header == false || opt.Header == s.Index.Header) &&
+			// Check not out of date
+			epoch < s.Index.Epoch {
+			return &s, nil
+		}
 	}
 
-	return &s, nil
-}
-
-// NewSearcherOptions returns a new Searcher for path, using options.
-func NewSearcherOptions(path string, options Options) (*Searcher, error) {
-	s, err := NewSearcher(path)
+	// ErrNotFound, or a bad index
+	idxopt := IndexOptions{
+		Delimiter: opt.Delimiter,
+		Header:    opt.Header,
+	}
+	s.Index, err = NewIndexOptions(path, idxopt)
 	if err != nil {
 		return nil, err
 	}
-	s.setOptions(options)
-
-	// If we have no index, create (a throwaway) one
-	if s.Index == nil {
-		index, err := NewIndex(path)
-		if err != nil {
-			return nil, err
-		}
-		err = index.Write()
-		if err != nil {
-			return nil, err
-		}
-		s.Index = index
+	err = s.Index.Write()
+	if err != nil {
+		return nil, err
 	}
 
-	return s, nil
+	return &s, nil
 }
 
 func (s *Searcher) readBlockEntry(entry IndexEntry) error {

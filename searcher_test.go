@@ -95,7 +95,7 @@ func TestSearcherLine3(t *testing.T) {
 		{"zzz.com", ""},
 	}
 
-	o := Options{Header: true}
+	o := SearcherOptions{Header: true}
 	/*
 		zerolog.SetGlobalLevel(zerolog.TraceLevel)
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
@@ -131,7 +131,7 @@ alstom.com,alstom.com,ULT
 		{"alstom.com.br", "alstom.com.br,alstom.com,RED\n"},
 	}
 
-	o := Options{Header: false}
+	o := SearcherOptions{Header: false}
 	/*
 		zerolog.SetGlobalLevel(zerolog.TraceLevel)
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
@@ -175,7 +175,7 @@ alstom.com,alstom.com,ULT
 		{"alstom.com.br", "alstom.com.br,alstom.com,RED\n"},
 	}
 
-	o := Options{Header: true}
+	o := SearcherOptions{Header: true}
 	s, err := NewSearcherOptions("testdata/alstom2.csv", o)
 	if err != nil {
 		t.Fatal(err)
@@ -212,7 +212,7 @@ func TestSearcherLinesMultiBlock1(t *testing.T) {
 		{"alstom.com", "alstom.com,first", "alstom.com,last", 438},
 	}
 
-	o := Options{Header: true}
+	o := SearcherOptions{Header: true}
 	/*
 		zerolog.SetGlobalLevel(zerolog.TraceLevel)
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
@@ -254,7 +254,7 @@ func TestSearcherLinesMultiBlock2(t *testing.T) {
 		{"alstom.com", "alstom.com,first", "alstom.com,last"},
 	}
 
-	o := Options{Header: true}
+	o := SearcherOptions{Header: true}
 	s, err := NewSearcherOptions("testdata/alstom4.csv", o)
 	if err != nil {
 		t.Fatal(err)
@@ -290,7 +290,7 @@ func TestSearcherLinesMultiBlock3(t *testing.T) {
 		{"foo", "foo,1", "foo,10000"},
 	}
 
-	o := Options{Header: false}
+	o := SearcherOptions{Header: false}
 	s, err := NewSearcherOptions("testdata/foo.csv", o)
 	if err != nil {
 		t.Fatal(err)

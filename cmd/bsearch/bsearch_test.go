@@ -16,7 +16,7 @@ func init() {
 	flag.Parse()
 }
 
-func TestBasic1(t *testing.T) {
+func TestCmdBsearch(t *testing.T) {
 	var tests = []struct {
 		name   string
 		args   string

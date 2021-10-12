@@ -44,8 +44,9 @@ func TestIndexLoad(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %s\n", tc.filename, err.Error())
 		}
-		assert.Equal(t, tc.filename, idx.Filename, tc.filename+" filename")
-		assert.Equal(t, "testdata", filepath.Base(idx.Filedir), tc.filename+" filedir")
+		filedir, filename := filepath.Split(idx.Filepath)
+		assert.Equal(t, tc.filename, filename, tc.filename+" filename")
+		assert.Equal(t, "testdata", filepath.Base(filedir), tc.filename+" filedir")
 		assert.Equal(t, tc.delim, string(idx.Delimiter), tc.filename+" delimiter")
 		assert.Equal(t, tc.header, idx.Header, tc.filename+" header")
 		assert.Greater(t, idx.Epoch, int64(0), tc.filename+" epoch")
@@ -72,8 +73,9 @@ func TestIndexNew(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %s\n", tc.filename, err.Error())
 		}
-		assert.Equal(t, tc.filename, idx.Filename, tc.filename+" filename")
-		assert.Equal(t, "testdata", filepath.Base(idx.Filedir), tc.filename+" filedir")
+		filedir, filename := filepath.Split(idx.Filepath)
+		assert.Equal(t, tc.filename, filename, tc.filename+" filename")
+		assert.Equal(t, "testdata", filepath.Base(filedir), tc.filename+" filedir")
 		assert.Equal(t, tc.delim, string(idx.Delimiter), tc.filename+" delimiter")
 		assert.Equal(t, tc.header, idx.Header, tc.filename+" header")
 		assert.Greater(t, idx.Epoch, int64(0), tc.filename+" epoch")
@@ -81,7 +83,7 @@ func TestIndexNew(t *testing.T) {
 	}
 }
 
-// Test NewIndexDelim()
+// Test NewIndexOptions()
 func TestIndexNewDelimiter(t *testing.T) {
 	var tests = []struct {
 		filename string
@@ -95,13 +97,14 @@ func TestIndexNewDelimiter(t *testing.T) {
 	for _, tc := range tests {
 		ensureNoIndex(t, tc.filename)
 
-		// NewIndexDelim()
-		idx, err := NewIndexDelim(filepath.Join("testdata", tc.filename), []byte(tc.delim))
+		o := IndexOptions{Delimiter: []byte(tc.delim)}
+		idx, err := NewIndexOptions(filepath.Join("testdata", tc.filename), o)
 		if err != nil {
 			t.Fatalf("%s: %s\n", tc.filename, err.Error())
 		}
-		assert.Equal(t, tc.filename, idx.Filename, tc.filename+" filename")
-		assert.Equal(t, "testdata", filepath.Base(idx.Filedir), tc.filename+" filedir")
+		filedir, filename := filepath.Split(idx.Filepath)
+		assert.Equal(t, tc.filename, filename, tc.filename+" filename")
+		assert.Equal(t, "testdata", filepath.Base(filedir), tc.filename+" filedir")
 		assert.Equal(t, tc.delim, string(idx.Delimiter), tc.filename+" delimiter")
 		assert.Equal(t, tc.header, idx.Header, tc.filename+" header")
 		assert.Greater(t, idx.Epoch, int64(0), tc.filename+" epoch")

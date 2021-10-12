@@ -73,7 +73,7 @@ func main() {
 	}
 
 	// Instantiate searcher
-	o := bsearch.Options{Header: opts.Header}
+	o := bsearch.SearcherOptions{Header: opts.Header}
 	if len(opts.Verbose) > 0 {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 		o.Logger = &log.Logger

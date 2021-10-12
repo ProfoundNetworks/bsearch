@@ -24,7 +24,8 @@ import (
 )
 
 const (
-	indexSuffix = "bsx"
+	indexSuffix      = "bsx"
+	defaultBlocksize = 4096
 )
 
 var (
@@ -32,18 +33,22 @@ var (
 	ErrIndexExpired  = errors.New("index file out of date")
 )
 
+type IndexOptions struct {
+	Delimiter []byte
+	Header    bool
+}
+
 type IndexEntry struct {
 	Key    string `yaml:"k"`
 	Offset int64  `yaml:"o"`
 	Length int64  `yaml:"l"`
 }
 
-// Index provides index metadata to Filename
+// Index provides index metadata for Filepath
 type Index struct {
 	Delimiter []byte       `yaml:"delim"`
 	Epoch     int64        `yaml:"epoch"`
-	Filedir   string       `yaml:"filedir"`
-	Filename  string       `yaml:"filename"`
+	Filepath  string       `yaml:"filepath"`
 	Header    bool         `yaml:"header"`
 	List      []IndexEntry `yaml:"list"`
 }
@@ -169,11 +174,16 @@ func deriveDelimiter(filename string) ([]byte, error) {
 
 // NewIndex creates a new Index for the path dataset
 func NewIndex(path string) (*Index, error) {
-	return NewIndexDelim(path, []byte{})
+	return NewIndexOptions(path, IndexOptions{})
 }
 
 // NewIndex creates a new Index for path with delim as the delimiter
-func NewIndexDelim(path string, delim []byte) (*Index, error) {
+func NewIndexOptions(path string, opt IndexOptions) (*Index, error) {
+	var err error
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
 	reader, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -182,11 +192,8 @@ func NewIndexDelim(path string, delim []byte) (*Index, error) {
 	if err != nil {
 		return nil, err
 	}
-	filedir, err := filepath.Abs(filepath.Dir(path))
-	if err != nil {
-		return nil, err
-	}
 
+	delim := opt.Delimiter
 	if len(delim) == 0 {
 		delim, err = deriveDelimiter(path)
 		if err != nil {
@@ -198,9 +205,8 @@ func NewIndexDelim(path string, delim []byte) (*Index, error) {
 	// index.Collation = "C"
 	index.Delimiter = delim
 	index.Epoch = epoch
-	index.Filename = filepath.Base(path)
-	index.Filedir = filedir
-	index.Header = false
+	index.Filepath = path
+	index.Header = opt.Header
 
 	// Process dataset in blocks
 	buf := make([]byte, defaultBlocksize)
@@ -245,8 +251,8 @@ func NewIndexDelim(path string, delim []byte) (*Index, error) {
 		firstBlock = false
 	}
 
-	// Reset all but the last entry lengths (this gives us blocks that finish cleanly
-	// on newlines)
+	// Reset all but the last entry lengths (this gives us blocks that
+	// finish cleanly on newlines)
 	for i := 0; i < len(list)-1; i++ {
 		list[i].Length = list[i+1].Offset - list[i].Offset
 	}
@@ -358,7 +364,8 @@ func (i *Index) Write() error {
 		return err
 	}
 
-	idxpath := filepath.Join(i.Filedir, indexFile(i.Filename))
+	filedir, filename := filepath.Split(i.Filepath)
+	idxpath := filepath.Join(filedir, indexFile(filename))
 	var writer io.WriteCloser
 	fh, err := os.OpenFile(idxpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
