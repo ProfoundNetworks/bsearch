@@ -24,6 +24,7 @@ import (
 )
 
 const (
+	indexVersion     = 2
 	indexSuffix      = "bsx"
 	defaultBlocksize = 4096
 )
@@ -35,6 +36,7 @@ var (
 )
 
 type IndexOptions struct {
+	Blocksize int64
 	Delimiter []byte
 	Header    bool
 }
@@ -45,13 +47,18 @@ type IndexEntry struct {
 	Length int64  `yaml:"l"`
 }
 
-// Index provides index metadata for Filepath
+// Index provides index metadata for the Filepath dataset
 type Index struct {
-	Delimiter []byte       `yaml:"delim"`
-	Epoch     int64        `yaml:"epoch"`
-	Filepath  string       `yaml:"filepath"`
-	Header    bool         `yaml:"header"`
-	List      []IndexEntry `yaml:"list"`
+	Blocksize      int64        `yaml:"blocksize"`
+	Delimiter      []byte       `yaml:"delim"`
+	Epoch          int64        `yaml:"epoch"`
+	Filepath       string       `yaml:"filepath"`
+	Header         bool         `yaml:"header"`
+	KeysIndexFirst bool         `yaml:"keys_index_first"`
+	KeysUnique     bool         `yaml:"keys_unique"`
+	Length         int          `yaml:"length"`
+	List           []IndexEntry `yaml:"list"`
+	Version        int          `yaml:"version"`
 }
 
 // epoch returns the modtime for path in epoch/unix format
@@ -173,12 +180,68 @@ func deriveDelimiter(filename string) ([]byte, error) {
 	return []byte{}, ErrUnknownDelimiter
 }
 
+func generateBlockIndex(index *Index, reader io.ReaderAt) error {
+	// Process dataset in blocks
+	buf := make([]byte, index.Blocksize)
+	list := []IndexEntry{}
+	var blockPosition int64 = 0
+	firstBlock := true
+	var entry, prev IndexEntry
+	for {
+		bytesread, err := reader.ReadAt(buf, blockPosition)
+		if err != nil && err != io.EOF {
+			return err
+		}
+		if bytesread > 0 {
+			entry, blockPosition, err = processBlock(reader, buf, bytesread,
+				blockPosition, index.Delimiter, err == io.EOF)
+			if err != nil {
+				return err
+			}
+			// Check that all entry keys are sorted as we expect
+			if prev.Key <= entry.Key {
+				if prev.Key == entry.Key && prev.Offset == entry.Offset {
+					fmt.Fprintf(os.Stderr, "Warning: duplicate index entry found - skipping\n%v\n%v\n",
+						prev, entry)
+				} else {
+					list = append(list, entry)
+				}
+			} else if prev.Key > entry.Key {
+				return fmt.Errorf("Error: key sort violation - %q > %q\n",
+					prev.Key, entry.Key)
+			}
+			// Set prev and blockPosition
+			prev = entry
+			blockPosition += int64(bytesread)
+			// If the first offset is not zero we've skipped a header
+			if firstBlock && entry.Offset > 0 {
+				index.Header = true
+			}
+		}
+		if err != nil && err == io.EOF {
+			break
+		}
+		firstBlock = false
+	}
+
+	// Reset all but the last entry lengths (this gives us blocks that
+	// finish cleanly on newlines)
+	for i := 0; i < len(list)-1; i++ {
+		list[i].Length = list[i+1].Offset - list[i].Offset
+	}
+
+	index.List = list
+	index.Length = len(list)
+
+	return nil
+}
+
 // NewIndex creates a new Index for the path dataset
 func NewIndex(path string) (*Index, error) {
 	return NewIndexOptions(path, IndexOptions{})
 }
 
-// NewIndex creates a new Index for path with delim as the delimiter
+// NewIndexOptions creates a new Index for path with delim as the delimiter
 func NewIndexOptions(path string, opt IndexOptions) (*Index, error) {
 	var err error
 	path, err = filepath.Abs(path)
@@ -203,63 +266,23 @@ func NewIndexOptions(path string, opt IndexOptions) (*Index, error) {
 	}
 
 	index := Index{}
-	// index.Collation = "C"
+	if opt.Blocksize > 0 {
+		index.Blocksize = opt.Blocksize
+	} else {
+		index.Blocksize = defaultBlocksize
+	}
 	index.Delimiter = delim
 	index.Epoch = epoch
 	index.Filepath = path
+	// FIXME: do we honour index.Header if true??
 	index.Header = opt.Header
+	index.Version = indexVersion
 
-	// Process dataset in blocks
-	buf := make([]byte, defaultBlocksize)
-	list := []IndexEntry{}
-	var blockPosition int64 = 0
-	firstBlock := true
-	var entry, prev IndexEntry
-	for {
-		bytesread, err := reader.ReadAt(buf, blockPosition)
-		if err != nil && err != io.EOF {
-			return nil, err
-		}
-		if bytesread > 0 {
-			entry, blockPosition, err = processBlock(reader, buf, bytesread,
-				blockPosition, delim, err == io.EOF)
-			if err != nil {
-				return nil, err
-			}
-			// Check that all entry keys are sorted as we expect
-			if prev.Key <= entry.Key {
-				if prev.Key == entry.Key && prev.Offset == entry.Offset {
-					fmt.Fprintf(os.Stderr, "Warning: duplicate index entry found - skipping\n%v\n%v\n",
-						prev, entry)
-				} else {
-					list = append(list, entry)
-				}
-			} else if prev.Key > entry.Key {
-				return nil, fmt.Errorf("Error: key sort violation - %q > %q\n",
-					prev.Key, entry.Key)
-			}
-			// Set prev and blockPosition
-			prev = entry
-			blockPosition += int64(bytesread)
-			// If the first offset is not zero we've skipped a header
-			if firstBlock && entry.Offset > 0 {
-				index.Header = true
-			}
-		}
-		if err != nil && err == io.EOF {
-			break
-		}
-		firstBlock = false
+	err = generateBlockIndex(&index, reader)
+	if err != nil {
+		return nil, err
 	}
 
-	// Reset all but the last entry lengths (this gives us blocks that
-	// finish cleanly on newlines)
-	for i := 0; i < len(list)-1; i++ {
-		list[i].Length = list[i+1].Offset - list[i].Offset
-	}
-
-	// Output
-	index.List = list
 	return &index, nil
 }
 
@@ -314,6 +337,11 @@ func LoadIndex(path string) (*Index, error) {
 	}
 	if fe > index.Epoch {
 		return nil, ErrIndexExpired
+	}
+
+	// Set index.Version to 1 if unset
+	if index.Version == 0 {
+		index.Version = 1
 	}
 
 	return &index, nil

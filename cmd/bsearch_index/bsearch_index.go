@@ -22,20 +22,13 @@ import (
 // Options
 var opts struct {
 	Verbose bool   `short:"v" long:"verbose" description:"display verbose debug output"`
-	Delim   string `short:"t" long:"sep"     description:"separator/delimiter character"`
-	Force   bool   `short:"f" long:"force"   description:"force index generation even if up-to-date"`
-	Cat     bool   `short:"c" long:"cat"     description:"write generated index to stdout instead of to file"`
+	Delim   string `short:"t" long:"sep" description:"separator/delimiter character"`
+	Header  bool   `long:"hdr" description:"Filename includes a header, which should be skipped (usually optional)"`
+	Force   bool   `short:"f" long:"force" description:"force index generation even if up-to-date"`
+	Cat     bool   `short:"c" long:"cat" description:"write generated index to stdout instead of to file"`
 	Args    struct {
 		Filename string
 	} `positional-args:"yes" required:"yes"`
-}
-
-// Disable flags.PrintErrors for more control
-var parser = flags.NewParser(&opts, flags.Default&^flags.PrintErrors)
-
-func usage() {
-	parser.WriteHelp(os.Stderr)
-	os.Exit(2)
 }
 
 func vprintf(format string, args ...interface{}) {
@@ -45,13 +38,18 @@ func vprintf(format string, args ...interface{}) {
 }
 
 func main() {
-	// Parse options
+	// Parse default options are HelpFlag | PrintErrors | PassDoubleDash
+	parser := flags.NewParser(&opts, flags.Default)
 	_, err := parser.Parse()
 	if err != nil {
-		if flagsErr, ok := err.(*flags.Error); ok && flagsErr.Type != flags.ErrHelp {
-			fmt.Fprintf(os.Stderr, "%s\n\n", err)
+		if flags.WroteHelp(err) {
+			os.Exit(0)
 		}
-		usage()
+
+		// Does PrintErrors work? Is it not set?
+		fmt.Fprintln(os.Stderr, "")
+		parser.WriteHelp(os.Stderr)
+		os.Exit(2)
 	}
 
 	// Setup
@@ -82,6 +80,9 @@ func main() {
 
 	// Generate and write index
 	idxopt := bsearch.IndexOptions{Delimiter: []byte(opts.Delim)}
+	if opts.Header {
+		idxopt.Header = true
+	}
 	index, err := bsearch.NewIndexOptions(opts.Args.Filename, idxopt)
 	if err != nil {
 		log.Fatal(err)
