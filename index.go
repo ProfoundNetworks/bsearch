@@ -10,6 +10,7 @@ to '_', and a '.bsx' suffix e.g. the index for `test_foobar.csv` is
 package bsearch
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -20,6 +21,7 @@ import (
 	"regexp"
 
 	"github.com/DataDog/zstd"
+	"github.com/rs/zerolog"
 	yaml "gopkg.in/yaml.v3"
 )
 
@@ -27,38 +29,51 @@ const (
 	indexVersion     = 2
 	indexSuffix      = "bsx"
 	defaultBlocksize = 4096
+	defaultScanMode  = BlockScan
 )
 
 var (
 	ErrIndexNotFound     = errors.New("index file not found")
 	ErrIndexExpired      = errors.New("index file out of date")
+	ErrIndexEmpty        = errors.New("index contains no entries")
 	ErrIndexPathMismatch = errors.New("index file path mismatch")
+)
+
+type ScanType int
+
+const (
+	DefaultScan ScanType = iota
+	LineScan
+	BlockScan
 )
 
 type IndexOptions struct {
 	Blocksize int64
 	Delimiter []byte
 	Header    bool
+	ScanMode  ScanType
+	Logger    *zerolog.Logger // debug logger
 }
 
 type IndexEntry struct {
 	Key    string `yaml:"k"`
-	Offset int64  `yaml:"o"`
-	Length int64  `yaml:"l"`
+	Offset int64  `yaml:"o"` // file offset for start-of-block
+	Length int64  `yaml:"l"` // block length
 }
 
 // Index provides index metadata for the Filepath dataset
 type Index struct {
-	Blocksize      int64        `yaml:"blocksize"`
-	Delimiter      []byte       `yaml:"delim"`
-	Epoch          int64        `yaml:"epoch"`
-	Filepath       string       `yaml:"filepath"`
-	Header         bool         `yaml:"header"`
-	KeysIndexFirst bool         `yaml:"keys_index_first"`
-	KeysUnique     bool         `yaml:"keys_unique"`
-	Length         int          `yaml:"length"`
-	List           []IndexEntry `yaml:"list"`
-	Version        int          `yaml:"version"`
+	Blocksize      int64           `yaml:"blocksize"`
+	Delimiter      []byte          `yaml:"delim"`
+	Epoch          int64           `yaml:"epoch"`
+	Filepath       string          `yaml:"filepath"`
+	Header         bool            `yaml:"header"`
+	KeysIndexFirst bool            `yaml:"keys_index_first"`
+	KeysUnique     bool            `yaml:"keys_unique"`
+	Length         int             `yaml:"length"`
+	List           []IndexEntry    `yaml:"list"`
+	Version        int             `yaml:"version"`
+	logger         *zerolog.Logger // debug logger
 }
 
 // epoch returns the modtime for path in epoch/unix format
@@ -180,8 +195,104 @@ func deriveDelimiter(filename string) ([]byte, error) {
 	return []byte{}, ErrUnknownDelimiter
 }
 
+// generateLineIndex processes the input from reader line-by-line,
+// generating index entries for the first full line in each block
+func generateLineIndex(index *Index, reader io.ReaderAt) error {
+	// Process dataset line-by-line
+	buf := make([]byte, index.Blocksize)
+	scanner := bufio.NewScanner(reader.(io.Reader))
+	scanner.Buffer(buf, int(index.Blocksize))
+	list := []IndexEntry{}
+	var blockPosition int64 = 0
+	var blockNumber int64 = -1
+	prevKey := []byte{}
+	index.KeysUnique = true
+	skipHeader := index.Header
+	for scanner.Scan() {
+		line := scanner.Bytes()
+
+		if skipHeader {
+			skipHeader = false
+			blockPosition += int64(len(line) + 1)
+			continue
+		}
+
+		elt := bytes.SplitN(line, index.Delimiter, 2)
+		key := elt[0]
+		if index.logger != nil {
+			index.logger.Debug().
+				Int64("blockNumber", blockNumber).
+				Int64("blockPosition", blockPosition).
+				Str("prevKey", string(prevKey)).
+				Str("key", string(key)).
+				Msg("generateLineIndex loop")
+		}
+
+		// Check key ordering
+		switch bytes.Compare(prevKey, key) {
+		case 1:
+			// Special case - allow second record out-of-order due to header
+			// FIXME: should we have an option to disallow this?
+			if blockNumber == 0 && !index.Header {
+				index.Header = true
+				// Reset list and blockNumber to restart
+				list = []IndexEntry{}
+				blockNumber = -1
+			} else {
+				// prevKey > key
+				return fmt.Errorf("Error: key sort violation - %q > %q\n",
+					prevKey, key)
+			}
+		case 0:
+			// prevKey == key
+			index.KeysUnique = false
+		}
+
+		// Add the first line of each block to our index
+		currentBlockNumber := blockPosition / index.Blocksize
+		if currentBlockNumber > blockNumber {
+			// Update the length of the last index entry
+			if len(list) > 0 {
+				last := list[len(list)-1]
+				list[len(list)-1].Length = blockPosition - last.Offset
+			}
+
+			entry := IndexEntry{
+				Key:    string(key),
+				Offset: blockPosition,
+				Length: 0, // placeholder
+			}
+			list = append(list, entry)
+
+			blockNumber = currentBlockNumber
+		}
+
+		blockPosition += int64(len(line) + 1)
+		prevKey = append([]byte{}, key...)
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	if len(list) == 0 {
+		return ErrIndexEmpty
+	}
+	// Update the final index entry
+	last := list[len(list)-1]
+	list[len(list)-1].Length = blockPosition - last.Offset
+
+	// FIXME: implement KeysIndexFirst handling with duplicate keys
+	if index.KeysUnique {
+		index.KeysIndexFirst = true
+	}
+	index.List = list
+	index.Length = len(list)
+
+	return nil
+}
+
+// generateBlockIndex processes the input from reader in blocks,
+// adding index entries for the first full line of each block
 func generateBlockIndex(index *Index, reader io.ReaderAt) error {
-	// Process dataset in blocks
 	buf := make([]byte, index.Blocksize)
 	list := []IndexEntry{}
 	var blockPosition int64 = 0
@@ -223,6 +334,9 @@ func generateBlockIndex(index *Index, reader io.ReaderAt) error {
 		}
 		firstBlock = false
 	}
+	if len(list) == 0 {
+		return ErrIndexEmpty
+	}
 
 	// Reset all but the last entry lengths (this gives us blocks that
 	// finish cleanly on newlines)
@@ -230,6 +344,7 @@ func generateBlockIndex(index *Index, reader io.ReaderAt) error {
 		list[i].Length = list[i+1].Offset - list[i].Offset
 	}
 
+	index.KeysUnique = false // can't tell if keys are unique with a block scan
 	index.List = list
 	index.Length = len(list)
 
@@ -277,8 +392,16 @@ func NewIndexOptions(path string, opt IndexOptions) (*Index, error) {
 	// FIXME: do we honour index.Header if true??
 	index.Header = opt.Header
 	index.Version = indexVersion
+	if opt.Logger != nil {
+		index.logger = opt.Logger
+	}
 
-	err = generateBlockIndex(&index, reader)
+	switch opt.ScanMode {
+	case LineScan:
+		err = generateLineIndex(&index, reader)
+	default:
+		err = generateBlockIndex(&index, reader)
+	}
 	if err != nil {
 		return nil, err
 	}

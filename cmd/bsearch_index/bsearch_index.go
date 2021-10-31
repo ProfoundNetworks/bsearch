@@ -10,31 +10,32 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"regexp"
 
 	"github.com/ProfoundNetworks/bsearch"
 	flags "github.com/jessevdk/go-flags"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	yaml "gopkg.in/yaml.v3"
 )
 
 // Options
 var opts struct {
-	Verbose bool   `short:"v" long:"verbose" description:"display verbose debug output"`
-	Delim   string `short:"t" long:"sep" description:"separator/delimiter character"`
-	Header  bool   `long:"hdr" description:"Filename includes a header, which should be skipped (usually optional)"`
-	Force   bool   `short:"f" long:"force" description:"force index generation even if up-to-date"`
-	Cat     bool   `short:"c" long:"cat" description:"write generated index to stdout instead of to file"`
-	Args    struct {
+	Verbose  []bool `short:"v" long:"verbose" description:"display verbose debug output"`
+	Delim    string `short:"t" long:"sep" description:"separator/delimiter character"`
+	Header   bool   `long:"hdr" description:"Filename includes a header, which should be skipped (usually optional)"`
+	Force    bool   `short:"f" long:"force" description:"force index generation even if up-to-date"`
+	Cat      bool   `short:"c" long:"cat" description:"write generated index to stdout instead of to file"`
+	ScanMode string `short:"m" long:"mode" choice:"block" choice:"line" description:"index scan mode"`
+	Args     struct {
 		Filename string
 	} `positional-args:"yes" required:"yes"`
 }
 
-func vprintf(format string, args ...interface{}) {
-	if opts.Verbose {
-		fmt.Fprintf(os.Stderr, format, args...)
-	}
+func die(msg string) {
+	fmt.Fprintln(os.Stderr, msg)
+	os.Exit(1)
 }
 
 func main() {
@@ -53,7 +54,17 @@ func main() {
 	}
 
 	// Setup
-	log.SetFlags(0)
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	switch len(opts.Verbose) {
+	case 0:
+		zerolog.SetGlobalLevel(zerolog.WarnLevel)
+	case 1:
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	case 2:
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	default:
+		zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	}
 
 	// Die if Filename looks compressed
 	reCompression := regexp.MustCompile(`\.(gz|bz2|br)$`)
@@ -73,7 +84,7 @@ func main() {
 	if !opts.Force && !opts.Cat {
 		_, err = bsearch.LoadIndex(opts.Args.Filename)
 		if err == nil {
-			vprintf("+ index file found and up to date\n")
+			log.Info().Msg("index file found and up to date")
 			os.Exit(0)
 		}
 	}
@@ -83,16 +94,27 @@ func main() {
 	if opts.Header {
 		idxopt.Header = true
 	}
+	if opts.ScanMode != "" {
+		switch opts.ScanMode {
+		case "line":
+			idxopt.ScanMode = bsearch.LineScan
+		case "block":
+			idxopt.ScanMode = bsearch.BlockScan
+		}
+	}
+	if len(opts.Verbose) > 0 {
+		idxopt.Logger = &log.Logger
+	}
 	index, err := bsearch.NewIndexOptions(opts.Args.Filename, idxopt)
 	if err != nil {
-		log.Fatal(err)
+		die(err.Error())
 	}
 
 	// Output to stdout if --cat specified
 	if opts.Cat {
 		data, err := yaml.Marshal(index)
 		if err != nil {
-			log.Fatal(err)
+			die(err.Error())
 		}
 		fmt.Print(string(data))
 		os.Exit(0)
@@ -101,6 +123,6 @@ func main() {
 	// Write index to file
 	err = index.Write()
 	if err != nil {
-		log.Fatal(err)
+		die(err.Error())
 	}
 }
