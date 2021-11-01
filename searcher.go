@@ -19,6 +19,7 @@ import (
 
 	"github.com/DataDog/zstd"
 	"github.com/rs/zerolog"
+	"golang.org/x/exp/mmap"
 )
 
 var (
@@ -102,13 +103,14 @@ func NewSearcherOptions(path string, opt SearcherOptions) (*Searcher, error) {
 	filesize := stat.Size()
 
 	// Open file
-	fh, err := os.Open(path)
+	//rdr, err := os.Open(path)
+	rdr, err := mmap.Open(path)
 	if err != nil {
 		return nil, err
 	}
 
 	s := Searcher{
-		r:          fh,
+		r:          rdr,
 		l:          filesize,
 		buf:        make([]byte, defaultBlocksize+1),
 		bufOffset:  -1,
