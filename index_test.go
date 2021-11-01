@@ -111,3 +111,42 @@ func TestIndexNewDelimiter(t *testing.T) {
 		assert.Equal(t, tc.listlen, len(idx.List), tc.filename+" listlen")
 	}
 }
+
+// Test blockEntryLE() on rir_clc_ipv_range.csv
+func TestIndexBlockEntryLE(t *testing.T) {
+	var tests = []struct {
+		key         string
+		entryKey    string
+		entryOffset int64
+	}{
+		{"000.001.000.000", "000.001.000.000", 0},
+		{"001.001.000.000", "000.001.000.000", 0},
+		{"002.055.255.255", "000.001.000.000", 0},
+		{"002.056.000.000", "002.056.000.000", 4113},
+		{"002.057.000.000", "002.056.000.000", 4113},
+		{"002.057.084.000", "002.057.084.000", 8213},
+		{"223.130.000.000", "223.130.000.000", 6504496},
+		{"255.255.255.255", "223.130.000.000", 6504496},
+		// Error case - should return ErrIndexEntryNotFound
+		{"000.000.000.000", "", -1},
+	}
+
+	dataset := "rir_clc_ipv_range.csv"
+	idx, err := LoadIndex(filepath.Join("testdata", dataset))
+	if err != nil {
+		t.Fatalf("%s: %s\n", dataset, err.Error())
+	}
+	assert.Equal(t, true, idx.KeysIndexFirst, dataset+" KeysIndexFirst")
+	assert.Equal(t, true, idx.KeysUnique, dataset+" KeysUnique")
+
+	for _, tc := range tests {
+		_, entry, err := idx.blockEntryLE([]byte(tc.key))
+		if tc.entryKey == "" {
+			assert.Equal(t, err, ErrIndexEntryNotFound,
+				tc.key+" returns ErrIndexEntryNotFound")
+			continue
+		}
+		assert.Equal(t, tc.entryKey, entry.Key, tc.key+" entryKey")
+		assert.Equal(t, tc.entryOffset, entry.Offset, tc.key+" entryOffset")
+	}
+}

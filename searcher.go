@@ -4,7 +4,6 @@ by prefix (e.g. for searching `LC_ALL=C` sorted text files).
 
 TODO: can we change the comparison function to support UTF-8 ordered keys?
       e.g. BytesEqual, StringEqual, BytesLessEqual, StringLessEqual
-TODO: should we check for/warn on non-ordered data?
 */
 
 package bsearch
@@ -345,14 +344,27 @@ func (s *Searcher) Line(k []byte) ([]byte, error) {
 }
 
 // scanIndexedLines returns up to n lines in the reader that begin with
-// the key k (data must be bytewise-ordered).
+// key (data must be bytewise-ordered).
 // Note that the index ensures blocks always finish cleanly on newlines.
 // Returns a slice of byte slices on success.
-func (s *Searcher) scanIndexedLines(k []byte, n int) ([][]byte, error) {
-	e, entry := s.Index.blockEntry(k)
+func (s *Searcher) scanIndexedLines(key []byte, n int) ([][]byte, error) {
+	var lines [][]byte
+	var entry IndexEntry
+	var e int
+	var err error
+	if s.Index.KeysIndexFirst {
+		// If index entries always index have the first instance of a key,
+		// we can use a more efficient less-than-or-equal-to block lookup
+		e, entry, err = s.Index.blockEntryLE(key)
+		if err != nil {
+			return lines, err
+		}
+	} else {
+		e, entry = s.Index.blockEntryLT(key)
+	}
 	if s.logger != nil {
 		s.logger.Debug().
-			Str("key", string(k)).
+			Str("key", string(key)).
 			Int("entryIndex", e).
 			Str("entry.Key", entry.Key).
 			Int64("entry.Offset", entry.Offset).
@@ -360,7 +372,7 @@ func (s *Searcher) scanIndexedLines(k []byte, n int) ([][]byte, error) {
 			Msg("scanIndexedLines blockEntry return")
 	}
 
-	var lines, l [][]byte
+	var l [][]byte
 	var terminate, ok bool
 	// Loop because we may need to read multiple blocks
 	for {
@@ -372,11 +384,11 @@ func (s *Searcher) scanIndexedLines(k []byte, n int) ([][]byte, error) {
 					Str("error", err.Error()).
 					Msg("readBlockEntry error")
 			}
-			return [][]byte{}, err
+			return lines, err
 		}
 
 		// Scan matching lines
-		l, terminate = s.scanLinesMatching(s.buf, k, n)
+		l, terminate = s.scanLinesMatching(s.buf, key, n)
 		if len(l) > 0 {
 			lines = append(lines, l...)
 		}
@@ -393,7 +405,7 @@ func (s *Searcher) scanIndexedLines(k []byte, n int) ([][]byte, error) {
 	}
 
 	if len(lines) == 0 {
-		return lines, ErrNotFound
+		return lines, ErrIndexEntryNotFound
 	}
 
 	return lines, nil
@@ -405,7 +417,7 @@ func (s *Searcher) scanIndexedLines(k []byte, n int) ([][]byte, error) {
 // Returns a slice of byte slices on success, and an empty slice of
 // byte slices and an error on error.
 func (s *Searcher) scanCompressedLines(k []byte, n int) ([][]byte, error) {
-	e, entry := s.Index.blockEntry(k)
+	e, entry := s.Index.blockEntryLT(k)
 
 	var lines, l [][]byte
 	var terminate, ok bool
@@ -436,14 +448,14 @@ func (s *Searcher) scanCompressedLines(k []byte, n int) ([][]byte, error) {
 	return lines, nil
 }
 
-// LinesN returns the first n lines in the reader that begin with key k,
+// LinesN returns the first n lines in the reader that begin with key,
 // using a binary search (data must be bytewise-ordered).
-func (s *Searcher) LinesN(k []byte, n int) ([][]byte, error) {
+func (s *Searcher) LinesN(key []byte, n int) ([][]byte, error) {
 	if s.isCompressed() {
 		if s.Index == nil {
 			return [][]byte{}, ErrIndexNotFound
 		}
-		return s.scanCompressedLines(k, n)
+		return s.scanCompressedLines(key, n)
 	}
 
 	// If no index exists, build and use a temporary one (but don't write)
@@ -455,7 +467,7 @@ func (s *Searcher) LinesN(k []byte, n int) ([][]byte, error) {
 		s.Index = index
 	}
 
-	return s.scanIndexedLines(k, n)
+	return s.scanIndexedLines(key, n)
 }
 
 // Lines returns all lines in the reader that begin with the byte
@@ -480,7 +492,6 @@ func (s *Searcher) Close() {
 
 // prefixCompare compares the initial sequence of bufa matches b
 // (up to len(b) only).
-// Used as the default compare function in NewSearcher.
 func prefixCompare(bufa, b []byte) int {
 	// If len(bufa) < len(b) we compare up to len(bufa), but disallow equality
 	if len(bufa) < len(b) {
