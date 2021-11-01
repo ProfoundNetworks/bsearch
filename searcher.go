@@ -280,21 +280,63 @@ func (s *Searcher) scanLineOffset(buf []byte, k []byte) (int, bool) {
 	return -1, terminate
 }
 
+// scanLinesWithKey returns the first n lines beginning with key from buf.
+func (s *Searcher) scanLinesWithKey(buf, key []byte, n int) [][]byte {
+	// This differs from scanLinesMatching below in that it assumes
+	// that buf contains *all* lines we might need, rather than just
+	// an initial subset.
+	var lines [][]byte
+
+	// Skip lines with a key < ours
+	keyde := append(key, s.Index.Delimiter...)
+	offset := 0
+	for offset < len(buf) {
+		k := getNBytesFrom(buf[offset:], len(key), s.Index.Delimiter)
+		if bytes.Compare(k, key) > -1 {
+			break
+		}
+		nlidx := bytes.IndexByte(buf[offset:], '\n')
+		if nlidx == -1 {
+			// If no new newline is found, there are no more lines to check
+			return lines
+		}
+		offset += nlidx + 1
+	}
+
+	// Collate up to n lines beginning with keyde
+	for offset < len(buf) && bytes.HasPrefix(buf[offset:], keyde) {
+		nlidx := bytes.IndexByte(buf[offset:], '\n')
+		if nlidx == -1 {
+			// If no newline found, read to end of buf
+			nlidx = len(buf) - offset
+		}
+		lines = append(lines, clone(buf[offset:offset+nlidx]))
+		if n > 0 && len(lines) >= n {
+			break
+		}
+		offset += nlidx + 1
+	}
+
+	return lines
+}
+
 // scanLinesMatching returns the first n lines beginning with key from buf.
 // Also returns a terminate flag which is true if we have reached a
 // termination condition (e.g. a byte sequence > key, or we hit n).
 func (s *Searcher) scanLinesMatching(buf, key []byte, n int) ([][]byte, bool) {
-	// Find the offset of the first line in buf beginning with b
+	// Find the offset of the first line in buf beginning with key
 	offset, terminate := s.scanLineOffset(buf, key)
 	if offset == -1 || terminate {
 		return [][]byte{}, terminate
 	}
-	if s.logger != nil {
-		s.logger.Debug().
-			Bytes("key", key).
-			Int("offset", offset).
-			Msg("scanLinesMatching line1")
-	}
+	/*
+		if s.logger != nil {
+			s.logger.Debug().
+				Bytes("key", key).
+				Int("offset", offset).
+				Msg("scanLinesMatching line1")
+		}
+	*/
 
 	delim := s.Index.Delimiter
 	var lines [][]byte
@@ -356,8 +398,8 @@ func (s *Searcher) scanIndexedLines(key []byte, n int) ([][]byte, error) {
 	var e int
 	var err error
 	if s.Index.KeysIndexFirst {
-		// If index entries always index have the first instance of a key,
-		// we can use a more efficient less-than-or-equal-to block lookup
+		// If index entries always have the first instance of a key, we
+		// can use the more efficient less-than-or-equal-to block lookup
 		e, entry, err = s.Index.blockEntryLE(key)
 		if err != nil {
 			return lines, err
@@ -370,52 +412,22 @@ func (s *Searcher) scanIndexedLines(key []byte, n int) ([][]byte, error) {
 		if s.Index.KeysIndexFirst {
 			blockEntry = "blockEntryLE"
 		}
-		s.logger.Debug().
-			Bytes("key", key).
-			Int("entryIndex", e).
-			Str("entry.Key", entry.Key).
-			Int64("entry.Offset", entry.Offset).
-			Int64("entry.Length", entry.Length).
-			Str("blockEntry", blockEntry).
-			Msg("scanIndexedLines blockEntryXX returned")
-	}
-
-	var l [][]byte
-	var terminate, ok bool
-	// Loop because we may need to read multiple blocks
-	for {
-		// Read entry block into s.buf
-		err := s.readBlockEntryMmap(entry)
-		if err != nil {
-			if s.logger != nil {
-				s.logger.Error().
-					Str("error", err.Error()).
-					Msg("readBlockEntry error")
-			}
-			return lines, err
-		}
-
-		// Scan matching lines
-		l, terminate = s.scanLinesMatching(s.buf, key, n)
-		if len(l) > 0 {
-			lines = append(lines, l...)
-		}
-		if terminate {
-			break
-		}
-
-		// Check next block
-		e++
-		entry, ok = s.Index.blockEntryN(e)
-		if !ok {
-			break
+		if s.logger != nil {
+			s.logger.Trace().
+				Bytes("key", key).
+				Int("entryIndex", e).
+				Str("entry.Key", entry.Key).
+				Int64("entry.Offset", entry.Offset).
+				Int64("entry.Length", entry.Length).
+				Str("blockEntry", blockEntry).
+				Msg("scanIndexedLines blockEntryXX returned")
 		}
 	}
 
+	lines = s.scanLinesWithKey(s.mmap[entry.Offset:], key, n)
 	if len(lines) == 0 {
 		return lines, ErrNotFound
 	}
-
 	return lines, nil
 }
 

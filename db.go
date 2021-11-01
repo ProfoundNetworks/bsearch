@@ -1,5 +1,5 @@
 /*
-DB provides a sipmle key-value-store-like interface using bsearch.Searcher,
+DB provides a simple key-value-store-like interface using bsearch.Searcher,
 returning the first first entry for a given key.
 */
 
