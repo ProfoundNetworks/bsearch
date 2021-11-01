@@ -265,18 +265,18 @@ func (s *Searcher) scanLineOffset(buf []byte, k []byte) (int, bool) {
 	return -1, terminate
 }
 
-// scanLinesMatching returns all lines beginning with key k from buf.
+// scanLinesMatching returns the first n lines beginning with key from buf.
 // Also returns a terminate flag which is true if we have reached a
-// termination condition (e.g. a byte sequence > k, or we hit n).
-func (s *Searcher) scanLinesMatching(buf, k []byte, n int) ([][]byte, bool) {
+// termination condition (e.g. a byte sequence > key, or we hit n).
+func (s *Searcher) scanLinesMatching(buf, key []byte, n int) ([][]byte, bool) {
 	// Find the offset of the first line in buf beginning with b
-	offset, terminate := s.scanLineOffset(buf, k)
+	offset, terminate := s.scanLineOffset(buf, key)
 	if offset == -1 || terminate {
 		return [][]byte{}, terminate
 	}
 	if s.logger != nil {
 		s.logger.Debug().
-			Str("key", string(k)).
+			Bytes("key", key).
 			Int("offset", offset).
 			Msg("scanLinesMatching line1")
 	}
@@ -288,13 +288,13 @@ func (s *Searcher) scanLinesMatching(buf, k []byte, n int) ([][]byte, bool) {
 			return lines[:n], true
 		}
 
-		offsetPrefix := getNBytesFrom(buf[offset:], len(k), delim)
-		cmp := prefixCompare(offsetPrefix, k)
+		offsetPrefix := getNBytesFrom(buf[offset:], len(key), delim)
+		cmp := prefixCompare(offsetPrefix, key)
 		nlidx := bytes.IndexByte(buf[offset:], '\n')
 		/*
 			if s.logger != nil {
 				s.logger.Trace().
-					Str("key", string(k)).
+					Bytes("key", key).
 					Int("offset", offset).
 					Str("offsetPrefix", string(offsetPrefix)).
 					Int("cmp", cmp).
@@ -333,19 +333,7 @@ func (s *Searcher) scanLinesMatching(buf, k []byte, n int) ([][]byte, bool) {
 	return lines, terminate
 }
 
-// Line returns the first line in the reader that begins with the key k,
-// using a binary search (data must be bytewise-ordered).
-func (s *Searcher) Line(k []byte) ([]byte, error) {
-	lines, err := s.LinesN(k, 1)
-	if err != nil || len(lines) < 1 {
-		return []byte{}, err
-	}
-	return lines[0], nil
-}
-
-// scanIndexedLines returns up to n lines in the reader that begin with
-// key (data must be bytewise-ordered).
-// Note that the index ensures blocks always finish cleanly on newlines.
+// scanIndexedLines returns the first n lines from reader that begin with key.
 // Returns a slice of byte slices on success.
 func (s *Searcher) scanIndexedLines(key []byte, n int) ([][]byte, error) {
 	var lines [][]byte
@@ -363,13 +351,18 @@ func (s *Searcher) scanIndexedLines(key []byte, n int) ([][]byte, error) {
 		e, entry = s.Index.blockEntryLT(key)
 	}
 	if s.logger != nil {
+		blockEntry := "blockEntryLT"
+		if s.Index.KeysIndexFirst {
+			blockEntry = "blockEntryLE"
+		}
 		s.logger.Debug().
-			Str("key", string(key)).
+			Bytes("key", key).
 			Int("entryIndex", e).
 			Str("entry.Key", entry.Key).
 			Int64("entry.Offset", entry.Offset).
 			Int64("entry.Length", entry.Length).
-			Msg("scanIndexedLines blockEntry return")
+			Str("blockEntry", blockEntry).
+			Msg("scanIndexedLines blockEntryXX returned")
 	}
 
 	var l [][]byte
@@ -448,9 +441,30 @@ func (s *Searcher) scanCompressedLines(k []byte, n int) ([][]byte, error) {
 	return lines, nil
 }
 
+// Line returns the first line in the reader that begins with key,
+// using a binary search (data must be bytewise-ordered).
+func (s *Searcher) Line(key []byte) ([]byte, error) {
+	lines, err := s.LinesN(key, 1)
+	if err != nil || len(lines) < 1 {
+		return []byte{}, err
+	}
+	return lines[0], nil
+}
+
+// Lines returns all lines in the reader that begin with the byte
+// slice b, using a binary search (data must be bytewise-ordered).
+func (s *Searcher) Lines(b []byte) ([][]byte, error) {
+	return s.LinesN(b, 0)
+}
+
 // LinesN returns the first n lines in the reader that begin with key,
 // using a binary search (data must be bytewise-ordered).
 func (s *Searcher) LinesN(key []byte, n int) ([][]byte, error) {
+	// If keys are unique max(n) is 1
+	if n == 0 && s.Index.KeysUnique {
+		n = 1
+	}
+
 	if s.isCompressed() {
 		if s.Index == nil {
 			return [][]byte{}, ErrIndexNotFound
@@ -468,12 +482,6 @@ func (s *Searcher) LinesN(key []byte, n int) ([][]byte, error) {
 	}
 
 	return s.scanIndexedLines(key, n)
-}
-
-// Lines returns all lines in the reader that begin with the byte
-// slice b, using a binary search (data must be bytewise-ordered).
-func (s *Searcher) Lines(b []byte) ([][]byte, error) {
-	return s.LinesN(b, 0)
 }
 
 /*
