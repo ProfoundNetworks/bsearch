@@ -496,7 +496,7 @@ func (i *Index) blockEntryLE(key []byte) (int, IndexEntry, error) {
 		//fmt.Fprintf(os.Stderr, "+ %s: begin %d, end %d, mid %d\n",
 		// string(b), begin, end, mid)
 
-		cmp := prefixCompareString(list[mid].Key, keystr)
+		cmp := strings.Compare(list[mid].Key, keystr)
 		//fmt.Fprintf(os.Stderr, "+ %s: [%d] comparing vs. %q, cmp %d\n",
 		// string(b), mid, list[mid].Key, cmp)
 		if cmp <= 0 {
@@ -591,20 +591,4 @@ func (i *Index) Write() error {
 	}
 
 	return nil
-}
-
-// prefixCompareString compares the initial sequence of a matches b
-// (up to len(b) only).
-func prefixCompareString(a, b string) int {
-	// If len(a) < len(b) we compare up to len(a), but disallow equality
-	if len(a) < len(b) {
-		cmp := strings.Compare(a, b[:len(a)])
-		if cmp == 0 {
-			// An equal match here is short, so actually a less than
-			return -1
-		}
-		return cmp
-	}
-
-	return strings.Compare(a[:len(b)], b)
 }
