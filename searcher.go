@@ -19,7 +19,7 @@ import (
 
 	"github.com/DataDog/zstd"
 	"github.com/rs/zerolog"
-	"golang.org/x/exp/mmap"
+	"launchpad.net/gommap"
 )
 
 var (
@@ -44,6 +44,7 @@ type SearcherOptions struct {
 type Searcher struct {
 	r          io.ReaderAt     // data reader
 	l          int64           // data length
+	mmap       []byte          // data mmap
 	buf        []byte          // data buffer
 	bufOffset  int64           // data buffer offset
 	dbuf       []byte          // decompressed data buffer
@@ -103,8 +104,14 @@ func NewSearcherOptions(path string, opt SearcherOptions) (*Searcher, error) {
 	filesize := stat.Size()
 
 	// Open file
-	//rdr, err := os.Open(path)
-	rdr, err := mmap.Open(path)
+	//rdr, err := mmap.Open(path)
+	rdr, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+
+	//buf := make([]byte, defaultBlocksize+1)
+	mmap, err := gommap.Map(rdr.Fd(), gommap.PROT_READ, gommap.MAP_PRIVATE)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +119,8 @@ func NewSearcherOptions(path string, opt SearcherOptions) (*Searcher, error) {
 	s := Searcher{
 		r:          rdr,
 		l:          filesize,
-		buf:        make([]byte, defaultBlocksize+1),
+		mmap:       mmap,
+		buf:        nil,
 		bufOffset:  -1,
 		dbufOffset: -1,
 		filepath:   path,
@@ -150,6 +158,11 @@ func NewSearcherOptions(path string, opt SearcherOptions) (*Searcher, error) {
 	}
 
 	return &s, nil
+}
+
+func (s *Searcher) readBlockEntryMmap(entry IndexEntry) error {
+	s.buf = s.mmap[entry.Offset : entry.Offset+entry.Length]
+	return nil
 }
 
 func (s *Searcher) readBlockEntry(entry IndexEntry) error {
@@ -372,7 +385,7 @@ func (s *Searcher) scanIndexedLines(key []byte, n int) ([][]byte, error) {
 	// Loop because we may need to read multiple blocks
 	for {
 		// Read entry block into s.buf
-		err := s.readBlockEntry(entry)
+		err := s.readBlockEntryMmap(entry)
 		if err != nil {
 			if s.logger != nil {
 				s.logger.Error().
