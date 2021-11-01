@@ -142,8 +142,8 @@ func TestIndexBlockEntryLE(t *testing.T) {
 	for _, tc := range tests {
 		_, entry, err := idx.blockEntryLE([]byte(tc.key))
 		if tc.entryKey == "" {
-			assert.Equal(t, err, ErrIndexEntryNotFound,
-				tc.key+" returns ErrIndexEntryNotFound")
+			assert.Equal(t, err, ErrNotFound,
+				tc.key+" returns ErrNotFound")
 			continue
 		}
 		assert.Equal(t, tc.entryKey, entry.Key, tc.key+" entryKey")

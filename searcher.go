@@ -405,7 +405,7 @@ func (s *Searcher) scanIndexedLines(key []byte, n int) ([][]byte, error) {
 	}
 
 	if len(lines) == 0 {
-		return lines, ErrIndexEntryNotFound
+		return lines, ErrNotFound
 	}
 
 	return lines, nil

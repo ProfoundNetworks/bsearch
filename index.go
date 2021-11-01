@@ -34,11 +34,10 @@ const (
 )
 
 var (
-	ErrIndexNotFound      = errors.New("index file not found")
-	ErrIndexExpired       = errors.New("index file out of date")
-	ErrIndexEmpty         = errors.New("index contains no entries")
-	ErrIndexPathMismatch  = errors.New("index file path mismatch")
-	ErrIndexEntryNotFound = errors.New("index entry not found")
+	ErrIndexNotFound     = errors.New("index file not found")
+	ErrIndexExpired      = errors.New("index file out of date")
+	ErrIndexEmpty        = errors.New("index contains no entries")
+	ErrIndexPathMismatch = errors.New("index file path mismatch")
 )
 
 type ScanType int
@@ -476,11 +475,11 @@ func LoadIndex(path string) (*Index, error) {
 // List and returns the last entry with a Key less-than-or-equal-to key,
 // and its position in the List.
 // If no matching entry is found (i.e. the first index entry Key is
-// greater than key), returns ErrIndexEntryNotFound.
+// greater than key), returns ErrNotFound.
 func (i *Index) blockEntryLE(key []byte) (int, IndexEntry, error) {
 	keystr := string(key)
 	if i.List[0].Key > keystr { // index List cannot be empty
-		return 0, IndexEntry{}, ErrIndexEntryNotFound
+		return 0, IndexEntry{}, ErrNotFound
 	}
 
 	var begin, mid, end int
