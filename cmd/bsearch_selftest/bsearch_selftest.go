@@ -51,6 +51,57 @@ func defaultSep() {
 	}
 }
 
+func tap(rownum int, status, key, diag string) {
+	fmt.Printf("%s %d %s\n", status, rownum, key)
+	if diag != "" {
+		fmt.Println(diag)
+	}
+}
+
+func processLine(bss *bsearch.Searcher, key, line string, rownum int) {
+	status := "ok"
+	diag := ""
+
+	// Lookup the line for key
+	got, err := bss.Line([]byte(key))
+	if err != nil {
+		status = "not ok"
+		diag = "# " + err.Error()
+	} else if string(got) != line {
+		status = "not ok"
+		diag = fmt.Sprintf("# got %q, expected %q", got, line)
+	}
+
+	tap(rownum, status, key, diag)
+}
+
+func processBatch(bss *bsearch.Searcher, key string, batch []string, rownum int) {
+	// Lookup all lines for key
+	lines, err := bss.Lines([]byte(key))
+	if err != nil {
+		diag := "# " + err.Error()
+		for i, line := range lines {
+			tap(rownum+i, "not ok", string(line), diag)
+		}
+		return
+	}
+
+	// Check that every line exists in batch
+	bmap := make(map[string]bool)
+	for _, line := range batch {
+		bmap[line] = true
+	}
+	for i, line := range lines {
+		status := "ok"
+		diag := ""
+		if !bmap[string(line)] {
+			status = "not ok"
+			diag = fmt.Sprintf("# entry not found for key %q: %s", key, line)
+		}
+		tap(rownum+i, status, string(line), diag)
+	}
+}
+
 func main() {
 	// Parse default options are HelpFlag | PrintErrors | PassDoubleDash
 	parser := flags.NewParser(&opts, flags.Default)
@@ -91,14 +142,18 @@ func main() {
 	log.Info().
 		Str("sep", opts.Sep).
 		Msg("")
-	bsdb, err := bsearch.NewDB(opts.Args.CSVFile)
+	bss, err := bsearch.NewSearcher(opts.Args.CSVFile)
 	if err != nil {
 		die(err.Error())
 	}
+	defer bss.Close()
+	keysUnique := bss.Index.KeysUnique
 	scanner := bufio.NewScanner(fh)
 
 	// Process
-	row := 1
+	rownum := 1
+	prevKey := ""
+	batch := []string{}
 	for scanner.Scan() {
 		line := scanner.Text()
 
@@ -113,33 +168,38 @@ func main() {
 		splits := strings.SplitN(line, opts.Sep, 2)
 		if len(splits) != 2 {
 			die(fmt.Sprintf("Cannot split key+value on %q in line %d: %s\n",
-				opts.Sep, row, line))
+				opts.Sep, rownum, line))
 		}
 		key := splits[0]
-		val := splits[1]
 
-		// Do lookup
-		status := "ok"
-		diag := ""
-		got, err := bsdb.GetString(key)
-		if err != nil {
-			status = "not ok"
-			diag = "# " + err.Error()
-		} else if got != val {
-			status = "not ok"
-			diag = fmt.Sprintf("# got %q, expected %q", got, val)
+		// keysUnique processing - individual lines
+		if keysUnique {
+			processLine(bss, key, line, rownum)
+			rownum += 1
+			continue
 		}
 
-		// TAP output
-		fmt.Printf("%s %d %s\n", status, row, key)
-		if diag != "" {
-			fmt.Println(diag)
+		// Duplicate keys processing - accumulate batch with the same key
+		if key < prevKey {
+			// Keys must be in sorted order for dup keys processing
+			die(fmt.Sprintf("Unsorted input? Line %d key %q < %q",
+				rownum, key, prevKey))
+		} else if key == prevKey {
+			batch = append(batch, line)
+		} else {
+			// Break - process batch and reset
+			if len(batch) > 0 {
+				processBatch(bss, prevKey, batch, rownum)
+			}
+			prevKey = key
+			rownum += len(batch)
+			batch = []string{line}
 		}
-		row += 1
 	}
 	if err := scanner.Err(); err != nil {
 		die(err.Error())
 	}
-
-	bsdb.Close()
+	if len(batch) > 0 {
+		processBatch(bss, prevKey, batch, rownum)
+	}
 }
