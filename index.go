@@ -29,7 +29,7 @@ import (
 const (
 	indexVersion     = 2
 	indexSuffix      = "bsx"
-	defaultBlocksize = 4096
+	defaultBlocksize = 2048
 )
 
 var (
@@ -40,7 +40,7 @@ var (
 )
 
 type IndexOptions struct {
-	Blocksize int64
+	Blocksize int
 	Delimiter []byte
 	Header    bool
 	Logger    *zerolog.Logger // debug logger
@@ -53,7 +53,7 @@ type IndexEntry struct {
 
 // Index provides index metadata for the Filepath dataset
 type Index struct {
-	Blocksize      int64           `yaml:"blocksize"`
+	Blocksize      int             `yaml:"blocksize"`
 	Delimiter      []byte          `yaml:"delim"`
 	Epoch          int64           `yaml:"epoch"`
 	Filepath       string          `yaml:"filepath"`
@@ -118,7 +118,7 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 	// Process dataset line-by-line
 	buf := make([]byte, index.Blocksize)
 	scanner := bufio.NewScanner(reader.(io.Reader))
-	scanner.Buffer(buf, int(index.Blocksize))
+	scanner.Buffer(buf, index.Blocksize)
 	list := []IndexEntry{}
 	var blockPosition int64 = 0
 	var blockNumber int64 = -1
@@ -171,7 +171,7 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 		}
 
 		// Add the first line of each block to our index
-		currentBlockNumber := blockPosition / index.Blocksize
+		currentBlockNumber := blockPosition / int64(index.Blocksize)
 		if currentBlockNumber > blockNumber {
 			offset := blockPosition
 			if dupKeyBlock {

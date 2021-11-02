@@ -22,12 +22,13 @@ import (
 
 // Options
 var opts struct {
-	Verbose []bool `short:"v" long:"verbose" description:"display verbose debug output"`
-	Delim   string `short:"t" long:"sep" description:"separator/delimiter character"`
-	Header  bool   `long:"hdr" description:"Filename includes a header, which should be skipped (usually optional)"`
-	Force   bool   `short:"f" long:"force" description:"force index generation even if up-to-date"`
-	Cat     bool   `short:"c" long:"cat" description:"write generated index to stdout instead of to file"`
-	Args    struct {
+	Verbose   []bool `short:"v" long:"verbose" description:"display verbose debug output"`
+	Delim     string `short:"t" long:"sep" description:"separator/delimiter character"`
+	Header    bool   `long:"hdr" description:"Filename includes a header, which should be skipped (usually optional)"`
+	Force     bool   `short:"f" long:"force" description:"force index generation even if up-to-date"`
+	Cat       bool   `short:"c" long:"cat" description:"write generated index to stdout instead of to file"`
+	Blocksize int    `short:"b" long:"bs" description:"index blocksize"`
+	Args      struct {
 		Filename string
 	} `positional-args:"yes" required:"yes"`
 }
@@ -95,6 +96,9 @@ func main() {
 	}
 	if len(opts.Verbose) > 0 {
 		idxopt.Logger = &log.Logger
+	}
+	if opts.Blocksize > 0 {
+		idxopt.Blocksize = opts.Blocksize
 	}
 	index, err := bsearch.NewIndexOptions(opts.Args.Filename, idxopt)
 	if err != nil {
