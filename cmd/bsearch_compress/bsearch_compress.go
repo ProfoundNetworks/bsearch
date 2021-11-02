@@ -1,3 +1,5 @@
+// +build skip
+
 /*
 bsearch utility to compress a plaintext bsearch dataset using
 a bsearch index. Each bsearch index block is compressed separately,

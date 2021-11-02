@@ -160,11 +160,6 @@ func NewSearcherOptions(path string, opt SearcherOptions) (*Searcher, error) {
 	return &s, nil
 }
 
-func (s *Searcher) readBlockEntryMmap(entry IndexEntry) error {
-	s.buf = s.mmap[entry.Offset : entry.Offset+entry.Length]
-	return nil
-}
-
 func (s *Searcher) readBlockEntry(entry IndexEntry) error {
 	// Noop if already done
 	if s.bufOffset == entry.Offset {
