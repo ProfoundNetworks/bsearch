@@ -118,6 +118,35 @@ func TestSearcherLine3(t *testing.T) {
 	}
 }
 
+// Test Searcher.Line() using testdata/foo.csv (header, duplicate keys)
+func TestSearcherLineFoo(t *testing.T) {
+	var tests = []struct {
+		key    string
+		expect string
+	}{
+		{"bar", "bar,1"},
+		{"foo", "foo,2"},
+	}
+
+	o := SearcherOptions{Header: true}
+	/*
+		zerolog.SetGlobalLevel(zerolog.TraceLevel)
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+		o.Logger = &log.Logger
+	*/
+	s, err := NewSearcherOptions("testdata/foo.csv", o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	for _, tc := range tests {
+		line, err := s.Line([]byte(tc.key))
+		assert.Nil(t, err)
+		assert.Equal(t, tc.expect, string(line), tc.key)
+	}
+}
+
 // Test Searcher.Lines() using testdata/alstom1.csv (no header)
 func TestSearcherLines1(t *testing.T) {
 	var tests = []struct {
@@ -281,13 +310,15 @@ func TestSearcherLinesMultiBlock2(t *testing.T) {
 }
 
 // Test Searcher.Lines() (without header, multiple blocks, starting block 1)
-func TestSearcherLinesMultiBlock3(t *testing.T) {
+func TestSearcherLinesFoo(t *testing.T) {
 	var tests = []struct {
 		key        string
+		count      int
 		first_line string
 		last_line  string
 	}{
-		{"foo", "foo,1", "foo,10000"},
+		{"bar", 1, "bar,1", "bar,1"},
+		{"foo", 9999, "foo,2", "foo,10000"},
 	}
 
 	o := SearcherOptions{Header: false}
@@ -299,20 +330,11 @@ func TestSearcherLinesMultiBlock3(t *testing.T) {
 
 	for _, tc := range tests {
 		lines, err := s.Lines([]byte(tc.key))
-		if err != nil {
-			if err != ErrNotFound {
-				t.Fatalf("%s: %s\n", tc.key, err.Error())
-			}
-		}
-		if len(lines) == 0 {
-			t.Fatalf("%s: no lines returned\n", tc.key)
-		}
-		if string(lines[0]) != tc.first_line {
-			t.Errorf("%q => first line %q\n   expected %q\n", tc.key, lines[0], tc.first_line)
-		}
-		if string(lines[len(lines)-1]) != tc.last_line {
-			t.Errorf("%q => last line %q\n   expected %q\n", tc.key, lines[len(lines)-1], tc.last_line)
-		}
+		assert.Nil(t, err)
+		assert.Equal(t, tc.count, len(lines), tc.key+" line count")
+		assert.Equal(t, tc.first_line, string(lines[0]), tc.key+" first_line")
+		assert.Equal(t, tc.last_line, string(lines[len(lines)-1]),
+			tc.key+" last_line")
 	}
 }
 

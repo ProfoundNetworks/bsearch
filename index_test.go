@@ -36,7 +36,7 @@ func TestIndexLoad(t *testing.T) {
 		listlen  int
 	}{
 		{"domains2.csv", ",", true, 1},
-		{"foo.csv", ",", false, 22},
+		{"foo.csv", ",", true, 22},
 	}
 
 	for _, tc := range tests {
