@@ -62,7 +62,7 @@ func TestIndexNew(t *testing.T) {
 		header   bool
 		listlen  int
 	}{
-		{"indexme.csv", ",", false, 22},
+		{"indexme.csv", ",", false, 1},
 	}
 
 	for _, tc := range tests {
@@ -91,7 +91,7 @@ func TestIndexNewDelimiter(t *testing.T) {
 		header   bool
 		listlen  int
 	}{
-		{"indexme.csv", ",", false, 22},
+		{"indexme.csv", ",", false, 1},
 	}
 
 	for _, tc := range tests {

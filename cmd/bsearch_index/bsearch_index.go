@@ -22,13 +22,12 @@ import (
 
 // Options
 var opts struct {
-	Verbose  []bool `short:"v" long:"verbose" description:"display verbose debug output"`
-	Delim    string `short:"t" long:"sep" description:"separator/delimiter character"`
-	Header   bool   `long:"hdr" description:"Filename includes a header, which should be skipped (usually optional)"`
-	Force    bool   `short:"f" long:"force" description:"force index generation even if up-to-date"`
-	Cat      bool   `short:"c" long:"cat" description:"write generated index to stdout instead of to file"`
-	ScanMode string `short:"m" long:"mode" choice:"block" choice:"line" description:"index scan mode" default:"line"`
-	Args     struct {
+	Verbose []bool `short:"v" long:"verbose" description:"display verbose debug output"`
+	Delim   string `short:"t" long:"sep" description:"separator/delimiter character"`
+	Header  bool   `long:"hdr" description:"Filename includes a header, which should be skipped (usually optional)"`
+	Force   bool   `short:"f" long:"force" description:"force index generation even if up-to-date"`
+	Cat     bool   `short:"c" long:"cat" description:"write generated index to stdout instead of to file"`
+	Args    struct {
 		Filename string
 	} `positional-args:"yes" required:"yes"`
 }
@@ -93,14 +92,6 @@ func main() {
 	idxopt := bsearch.IndexOptions{Delimiter: []byte(opts.Delim)}
 	if opts.Header {
 		idxopt.Header = true
-	}
-	if opts.ScanMode != "" {
-		switch opts.ScanMode {
-		case "line":
-			idxopt.ScanMode = bsearch.LineScan
-		case "block":
-			idxopt.ScanMode = bsearch.BlockScan
-		}
 	}
 	if len(opts.Verbose) > 0 {
 		idxopt.Logger = &log.Logger

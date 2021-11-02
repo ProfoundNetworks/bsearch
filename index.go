@@ -39,19 +39,10 @@ var (
 	ErrIndexPathMismatch = errors.New("index file path mismatch")
 )
 
-type ScanType int
-
-const (
-	DefaultScan ScanType = iota
-	LineScan
-	BlockScan
-)
-
 type IndexOptions struct {
 	Blocksize int64
 	Delimiter []byte
 	Header    bool
-	ScanMode  ScanType
 	Logger    *zerolog.Logger // debug logger
 }
 
@@ -101,80 +92,6 @@ func IndexPath(path string) (string, error) {
 	}
 	dir, base := filepath.Split(path)
 	return filepath.Join(dir, indexFile(base)), nil
-}
-
-// processBlock processes the block in buf[:bytesread] and returns an IndexEntry
-// for the first line it finds.
-func processBlock(reader io.ReaderAt, buf []byte, bytesread int,
-	blockPosition int64, delim []byte, eof bool) (IndexEntry, int64, error) {
-	var err error
-	nlidx := -1
-
-	// Find first newline
-	if blockPosition > 0 {
-		nlidx = bytes.IndexByte(buf[:bytesread], '\n')
-		if nlidx == -1 {
-			// If no newline exists in block, we can skip the block entirely (right?)
-			blockPosition += int64(bytesread)
-			bytesread, err = reader.ReadAt(buf, blockPosition)
-			if err != nil && err != io.EOF {
-				return IndexEntry{}, blockPosition, err
-			}
-			return processBlock(reader, buf, bytesread, blockPosition,
-				delim, err == io.EOF)
-		}
-	}
-
-	//d := delim
-	didx := bytes.Index(buf[nlidx+1:bytesread], delim)
-	if didx == -1 {
-		// If no delimiter is found in block, assume we have a partial line,
-		// and re-read from nlidx
-		if nlidx == -1 {
-			return IndexEntry{}, blockPosition, ErrKeyExceedsBlocksize
-		}
-		blockPosition += int64(nlidx)
-		bytesread, err = reader.ReadAt(buf, blockPosition)
-		if err != nil && err != io.EOF {
-			return IndexEntry{}, blockPosition, err
-		}
-		return processBlock(reader, buf, bytesread, blockPosition,
-			delim, err == io.EOF)
-	}
-	didx += nlidx + 1
-
-	// Check that there's no newline in this chunk
-	if nlidx2 := bytes.IndexByte(buf[nlidx+1:didx], '\n'); nlidx2 != -1 {
-		return IndexEntry{}, blockPosition,
-			fmt.Errorf("Error: line without delimiter found:\n%s\n",
-				string(buf[nlidx+1:nlidx2]))
-	}
-
-	// Create entry
-	entry := IndexEntry{}
-	entry.Key = string(buf[nlidx+1 : didx])
-	entry.Offset = blockPosition + int64(nlidx) + 1
-	entry.Length = int64(bytesread - nlidx - 1)
-
-	// On the first block only, check for the presence of a header
-	if blockPosition == 0 {
-		nlidx = bytes.IndexByte(buf[:bytesread], '\n')
-		if nlidx == -1 {
-			// Corner case - no newline found in block
-			return IndexEntry{}, blockPosition, errors.New("Missing first block nlidx handling not yet implemented")
-		}
-		entry2, bp2, err := processBlock(reader, buf[nlidx:bytesread],
-			bytesread-(nlidx), blockPosition+int64(nlidx), delim, eof)
-		if err != nil {
-			return IndexEntry{}, blockPosition + int64(nlidx), err
-		}
-		// If the entry.Key > entry2.Key, assume the first is a header
-		if entry.Key > entry2.Key {
-			return entry2, bp2, nil
-		}
-	}
-
-	return entry, blockPosition, nil
 }
 
 // deriveDelimiter tries to guess an appropriate delimiter from filename
@@ -307,67 +224,6 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 	return nil
 }
 
-// generateBlockIndex processes the input from reader in blocks,
-// adding index entries for the first full line of each block
-func generateBlockIndex(index *Index, reader io.ReaderAt) error {
-	buf := make([]byte, index.Blocksize)
-	list := []IndexEntry{}
-	var blockPosition int64 = 0
-	firstBlock := true
-	var entry, prev IndexEntry
-	for {
-		bytesread, err := reader.ReadAt(buf, blockPosition)
-		if err != nil && err != io.EOF {
-			return err
-		}
-		if bytesread > 0 {
-			entry, blockPosition, err = processBlock(reader, buf, bytesread,
-				blockPosition, index.Delimiter, err == io.EOF)
-			if err != nil {
-				return err
-			}
-			// Check that all entry keys are sorted as we expect
-			if prev.Key <= entry.Key {
-				if prev.Key == entry.Key && prev.Offset == entry.Offset {
-					fmt.Fprintf(os.Stderr, "Warning: duplicate index entry found - skipping\n%v\n%v\n",
-						prev, entry)
-				} else {
-					list = append(list, entry)
-				}
-			} else if prev.Key > entry.Key {
-				return fmt.Errorf("Error: key sort violation - %q > %q\n",
-					prev.Key, entry.Key)
-			}
-			// Set prev and blockPosition
-			prev = entry
-			blockPosition += int64(bytesread)
-			// If the first offset is not zero we've skipped a header
-			if firstBlock && entry.Offset > 0 {
-				index.Header = true
-			}
-		}
-		if err != nil && err == io.EOF {
-			break
-		}
-		firstBlock = false
-	}
-	if len(list) == 0 {
-		return ErrIndexEmpty
-	}
-
-	// Reset all but the last entry lengths (this gives us blocks that
-	// finish cleanly on newlines)
-	for i := 0; i < len(list)-1; i++ {
-		list[i].Length = list[i+1].Offset - list[i].Offset
-	}
-
-	index.KeysUnique = false // can't tell if keys are unique with a block scan
-	index.List = list
-	index.Length = len(list)
-
-	return nil
-}
-
 // NewIndex creates a new Index for the path dataset
 func NewIndex(path string) (*Index, error) {
 	return NewIndexOptions(path, IndexOptions{})
@@ -413,12 +269,7 @@ func NewIndexOptions(path string, opt IndexOptions) (*Index, error) {
 		index.logger = opt.Logger
 	}
 
-	switch opt.ScanMode {
-	case LineScan:
-		err = generateLineIndex(&index, reader)
-	default:
-		err = generateBlockIndex(&index, reader)
-	}
+	err = generateLineIndex(&index, reader)
 	if err != nil {
 		return nil, err
 	}
