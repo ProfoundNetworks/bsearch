@@ -190,7 +190,7 @@ func (s *Searcher) scanLinesWithKey(buf, key []byte, n int) [][]byte {
 			// If no newline found, read to end of buf
 			nlidx = len(buf) - offset
 		}
-		lines = append(lines, clone(buf[offset:offset+nlidx]))
+		lines = append(lines, clonebs(buf[offset:offset+nlidx]))
 		if n > 0 && len(lines) >= n {
 			break
 		}
@@ -310,8 +310,8 @@ func prefixCompare(bufa, b []byte) int {
 	return bytes.Compare(bufa[:len(b)], b)
 }
 
-// clone returns a copy of the given byte slice
-func clone(b []byte) []byte {
+// clonebs returns a copy of the given byte slice
+func clonebs(b []byte) []byte {
 	c := make([]byte, len(b))
 	copy(c, b)
 	return c

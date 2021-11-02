@@ -27,7 +27,7 @@ var opts struct {
 	Header   bool   `long:"hdr" description:"Filename includes a header, which should be skipped (usually optional)"`
 	Force    bool   `short:"f" long:"force" description:"force index generation even if up-to-date"`
 	Cat      bool   `short:"c" long:"cat" description:"write generated index to stdout instead of to file"`
-	ScanMode string `short:"m" long:"mode" choice:"block" choice:"line" description:"index scan mode"`
+	ScanMode string `short:"m" long:"mode" choice:"block" choice:"line" description:"index scan mode" default:"line"`
 	Args     struct {
 		Filename string
 	} `positional-args:"yes" required:"yes"`

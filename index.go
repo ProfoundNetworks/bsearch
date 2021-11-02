@@ -30,7 +30,6 @@ const (
 	indexVersion     = 2
 	indexSuffix      = "bsx"
 	defaultBlocksize = 4096
-	defaultScanMode  = BlockScan
 )
 
 var (
@@ -198,6 +197,7 @@ func deriveDelimiter(filename string) ([]byte, error) {
 
 // generateLineIndex processes the input from reader line-by-line,
 // generating index entries for the first full line in each block
+// (or the first instance of that key, if repeating)
 func generateLineIndex(index *Index, reader io.ReaderAt) error {
 	// Process dataset line-by-line
 	buf := make([]byte, index.Blocksize)
@@ -207,7 +207,10 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 	var blockPosition int64 = 0
 	var blockNumber int64 = -1
 	prevKey := []byte{}
+	var firstOffset int64 = -1
 	index.KeysUnique = true
+	// If index.Header is set, skip the first line of the dataset,
+	// begin indexing from the second
 	skipHeader := index.Header
 	for scanner.Scan() {
 		line := scanner.Bytes()
@@ -224,12 +227,13 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 			index.logger.Debug().
 				Int64("blockNumber", blockNumber).
 				Int64("blockPosition", blockPosition).
-				Str("prevKey", string(prevKey)).
-				Str("key", string(key)).
+				Bytes("prevKey", prevKey).
+				Bytes("key", key).
 				Msg("generateLineIndex loop")
 		}
 
 		// Check key ordering
+		dupKeyBlock := false
 		switch bytes.Compare(prevKey, key) {
 		case 1:
 			// Special case - allow second record out-of-order due to header
@@ -247,29 +251,44 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 		case 0:
 			// prevKey == key
 			index.KeysUnique = false
+			dupKeyBlock = true
 		}
 
 		// Add the first line of each block to our index
 		currentBlockNumber := blockPosition / index.Blocksize
 		if currentBlockNumber > blockNumber {
-			// Update the length of the last index entry
-			if len(list) > 0 {
-				last := list[len(list)-1]
-				list[len(list)-1].Length = blockPosition - last.Offset
+			offset := blockPosition
+			if dupKeyBlock {
+				offset = firstOffset
 			}
 
-			entry := IndexEntry{
-				Key:    string(key),
-				Offset: blockPosition,
-				Length: 0, // placeholder
+			// Update the length of the last index entry
+			var last_offset int64 = -1
+			if len(list) > 0 {
+				last := list[len(list)-1]
+				last_offset = last.Offset
+				if offset != last.Offset {
+					list[len(list)-1].Length = offset - last.Offset
+				}
 			}
-			list = append(list, entry)
+
+			if last_offset != offset {
+				entry := IndexEntry{
+					Key:    string(key),
+					Offset: offset,
+					Length: 0, // placeholder
+				}
+				list = append(list, entry)
+			}
 
 			blockNumber = currentBlockNumber
 		}
 
+		if !dupKeyBlock {
+			firstOffset = blockPosition
+			prevKey = clonebs(key)
+		}
 		blockPosition += int64(len(line) + 1)
-		prevKey = append([]byte{}, key...)
 	}
 	if err := scanner.Err(); err != nil {
 		return err
@@ -281,10 +300,7 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 	last := list[len(list)-1]
 	list[len(list)-1].Length = blockPosition - last.Offset
 
-	// FIXME: implement KeysIndexFirst handling with duplicate keys
-	if index.KeysUnique {
-		index.KeysIndexFirst = true
-	}
+	index.KeysIndexFirst = true
 	index.List = list
 	index.Length = len(list)
 

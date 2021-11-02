@@ -74,9 +74,10 @@ func TestIndexFooLineScan(t *testing.T) {
 	}
 
 	assert.Equal(t, "foo.csv", filepath.Base(index.Filepath))
-	assert.Equal(t, false, index.KeysIndexFirst)
+	assert.Equal(t, true, index.Header)
+	assert.Equal(t, true, index.KeysIndexFirst)
 	assert.Equal(t, false, index.KeysUnique)
-	assert.Equal(t, 22, len(index.List))
+	assert.Equal(t, 2, len(index.List))
 	assert.Equal(t, 2, index.Version)
 
 	fh, err := os.Open("testdata/foo.csv")
