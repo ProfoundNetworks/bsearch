@@ -32,15 +32,24 @@ func TestIndexFoo(t *testing.T) {
 
 	// Iterate over index entries
 	for i, e := range index.List {
+		var length int64
+		if i+1 < index.Length {
+			length = index.List[i+1].Offset - e.Offset
+		} else {
+			stat, err := os.Stat(index.Filepath)
+			assert.Nil(t, err)
+			length = stat.Size() - e.Offset
+		}
+
 		// Entry blocks should begin with key followed by a delimiter,
 		// and end with a newline
-		buf := make([]byte, e.Length)
+		buf := make([]byte, length)
 		bytesread, err := fh.ReadAt(buf, e.Offset)
 		if err != nil && err != io.EOF {
 			t.Fatal(err)
 		}
-		if int64(bytesread) < e.Length {
-			t.Fatalf("bytesread error reading entry %d - read %d bytes, expected %d\n", i, bytesread, e.Length)
+		if int64(bytesread) < length {
+			t.Fatalf("bytesread error reading entry %d - read %d bytes, expected %d\n", i, bytesread, length)
 		}
 		assert.Equal(t, e.Key+string(index.Delimiter), string(buf[:len(e.Key)+1]))
 		assert.Equal(t, "\n", string(buf[len(buf)-1]))
@@ -89,16 +98,25 @@ func TestIndexRIR(t *testing.T) {
 		// All entries should be zero-filled ips
 		assert.Equal(t, 15, len(e.Key), "key length == 15")
 
+		var length int64
+		if i+1 < index.Length {
+			length = index.List[i+1].Offset - e.Offset
+		} else {
+			stat, err := os.Stat(index.Filepath)
+			assert.Nil(t, err)
+			length = stat.Size() - e.Offset
+		}
+
 		// Entry blocks should begin with key followed by a delimiter,
 		// and end with a newline
-		buf := make([]byte, e.Length)
+		buf := make([]byte, length)
 		bytesread, err := fh.ReadAt(buf, e.Offset)
 		if err != nil && err != io.EOF {
 			t.Fatal(err)
 		}
-		if int64(bytesread) < e.Length {
+		if int64(bytesread) < length {
 			t.Fatalf("bytesread error reading entry %d - read %d bytes, expected %d\n",
-				i, bytesread, e.Length)
+				i, bytesread, length)
 		}
 		assert.Equal(t, e.Key+string(index.Delimiter), string(buf[:len(e.Key)+1]))
 		assert.Equal(t, "\n", string(buf[len(buf)-1]))
@@ -149,16 +167,25 @@ func TestIndexRIRHeader(t *testing.T) {
 		// All entries should be zero-filled ips
 		assert.Equal(t, 15, len(e.Key), "key length == 15")
 
+		var length int64
+		if i+1 < index.Length {
+			length = index.List[i+1].Offset - e.Offset
+		} else {
+			stat, err := os.Stat(index.Filepath)
+			assert.Nil(t, err)
+			length = stat.Size() - e.Offset
+		}
+
 		// Entry blocks should begin with key followed by a delimiter,
 		// and end with a newline
-		buf := make([]byte, e.Length)
+		buf := make([]byte, length)
 		bytesread, err := fh.ReadAt(buf, e.Offset)
 		if err != nil && err != io.EOF {
 			t.Fatal(err)
 		}
-		if int64(bytesread) < e.Length {
+		if int64(bytesread) < length {
 			t.Fatalf("bytesread error reading entry %d - read %d bytes, expected %d\n",
-				i, bytesread, e.Length)
+				i, bytesread, length)
 		}
 		assert.Equal(t, e.Key+string(index.Delimiter), string(buf[:len(e.Key)+1]))
 		assert.Equal(t, "\n", string(buf[len(buf)-1]))

@@ -49,7 +49,6 @@ type IndexOptions struct {
 type IndexEntry struct {
 	Key    string `yaml:"k"`
 	Offset int64  `yaml:"o"` // file offset for start-of-block
-	Length int64  `yaml:"l"` // block length
 }
 
 // Index provides index metadata for the Filepath dataset
@@ -179,21 +178,14 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 				offset = firstOffset
 			}
 
-			// Update the length of the last index entry
 			var last_offset int64 = -1
 			if len(list) > 0 {
-				last := list[len(list)-1]
-				last_offset = last.Offset
-				if offset != last.Offset {
-					list[len(list)-1].Length = offset - last.Offset
-				}
+				last_offset = list[len(list)-1].Offset
 			}
-
 			if last_offset != offset {
 				entry := IndexEntry{
 					Key:    string(key),
 					Offset: offset,
-					Length: 0, // placeholder
 				}
 				list = append(list, entry)
 			}
@@ -213,9 +205,6 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 	if len(list) == 0 {
 		return ErrIndexEmpty
 	}
-	// Update the final index entry
-	last := list[len(list)-1]
-	list[len(list)-1].Length = blockPosition - last.Offset
 
 	index.KeysIndexFirst = true
 	index.List = list
