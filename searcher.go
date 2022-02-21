@@ -17,6 +17,7 @@ import (
 	"regexp"
 
 	"github.com/rs/zerolog"
+	"golang.org/x/sys/unix"
 	"launchpad.net/gommap"
 )
 
@@ -135,10 +136,24 @@ func NewSearcherOptions(path string, opt SearcherOptions) (*Searcher, error) {
 
 	// ErrNotFound, or an expired/mismatched index of some kind
 	if s.logger != nil {
-		s.logger.Info().
+		s.logger.Debug().
+			Bool("expired", err == ErrIndexExpired).
+			Bool("path_mismatch", err == ErrIndexPathMismatch).
 			Str("path", path).
 			Msg("expired/mismatched index")
 	}
+	// Check that we have write permissions to the index
+	idxErr := err
+	idxpath, err := IndexPath(path)
+	if err != nil {
+		return nil, err
+	}
+	err = unix.Access(idxpath, unix.W_OK)
+	if err != nil {
+		// If we cannot write to the index, return the original idxErr
+		return nil, idxErr
+	}
+
 	idxopt := IndexOptions{
 		Delimiter: opt.Delimiter,
 		Header:    opt.Header,
