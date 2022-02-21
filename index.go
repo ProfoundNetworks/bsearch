@@ -310,12 +310,16 @@ func LoadIndex(path string) (*Index, error) {
 		return nil, ErrIndexPathMismatch
 	}
 
-	// Check index.Epoch is still valid
+	// Check file is not newer than index
 	fe, err := epoch(path)
 	if err != nil {
 		return nil, err
 	}
-	if fe > index.Epoch {
+	ie, err := epoch(idxpath)
+	if err != nil {
+		return nil, err
+	}
+	if fe > ie {
 		return nil, ErrIndexExpired
 	}
 
