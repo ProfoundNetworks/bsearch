@@ -31,6 +31,7 @@ var (
 	reCompressedUnsupported = regexp.MustCompile(`\.(zst|gz|bz2|xz|zip)$`)
 )
 
+// SearcherOptions struct for use with NewSearcherOptions
 type SearcherOptions struct {
 	MatchLE bool            // use less-than-or-equal-to match semantics
 	Logger  *zerolog.Logger // debug logger
@@ -133,6 +134,11 @@ func NewSearcherOptions(path string, opt SearcherOptions) (*Searcher, error) {
 	}
 
 	// ErrNotFound, or an expired/mismatched index of some kind
+	if s.logger != nil {
+		s.logger.Info().
+			Str("path", path).
+			Msg("expired/mismatched index")
+	}
 	idxopt := IndexOptions{
 		Delimiter: opt.Delimiter,
 		Header:    opt.Header,
@@ -222,16 +228,14 @@ func (s *Searcher) scanIndexedLines(key []byte, n int) ([][]byte, error) {
 		if s.Index.KeysIndexFirst {
 			blockEntry = "blockEntryLE"
 		}
-		if s.logger != nil {
-			s.logger.Trace().
-				Bytes("key", key).
-				Int("entryIndex", e).
-				Str("entry.Key", entry.Key).
-				Int64("entry.Offset", entry.Offset).
-				//Int64("entry.Length", entry.Length).
-				Str("blockEntry", blockEntry).
-				Msg("scanIndexedLines blockEntryXX returned")
-		}
+		s.logger.Trace().
+			Bytes("key", key).
+			Int("entryIndex", e).
+			Str("entry.Key", entry.Key).
+			Int64("entry.Offset", entry.Offset).
+			//Int64("entry.Length", entry.Length).
+			Str("blockEntry", blockEntry).
+			Msg("scanIndexedLines blockEntryXX returned")
 	}
 
 	lines = s.scanLinesWithKey(s.mmap[entry.Offset:], key, n)
