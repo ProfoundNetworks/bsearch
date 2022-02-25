@@ -81,10 +81,10 @@ func TestIndexRIR(t *testing.T) {
 	}
 
 	assert.Equal(t, "rir_clc_ipv_range.csv", filepath.Base(index.Filepath))
-	assert.Equal(t, int64(4096), index.Blocksize)
+	assert.Equal(t, 2048, index.Blocksize)
 	assert.Equal(t, true, index.KeysIndexFirst)
 	assert.Equal(t, true, index.KeysUnique)
-	assert.Equal(t, 1589, index.Length)
+	assert.Equal(t, 3178, index.Length)
 	assert.Equal(t, 2, index.Version)
 
 	fh, err := os.Open("testdata/rir_clc_ipv_range.csv")
@@ -149,11 +149,11 @@ func TestIndexRIRHeader(t *testing.T) {
 	}
 
 	assert.Equal(t, "rir_clc_ipv_range.csv", filepath.Base(index.Filepath))
-	assert.Equal(t, int64(4096), index.Blocksize)
+	assert.Equal(t, 2048, index.Blocksize)
 	assert.Equal(t, true, index.Header)
 	assert.Equal(t, true, index.KeysIndexFirst)
 	assert.Equal(t, true, index.KeysUnique)
-	assert.Equal(t, 1589, index.Length)
+	assert.Equal(t, 3178, index.Length)
 	assert.Equal(t, 2, index.Version)
 
 	fh, err := os.Open("testdata/rir_clc_ipv_range.csv")
