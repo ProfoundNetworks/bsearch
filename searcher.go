@@ -192,6 +192,10 @@ func (s *Searcher) scanLinesWithKey(buf, key []byte, n int) [][]byte {
 	keyde := append(key, s.Index.Delimiter...)
 	offset := 0
 	for offset < len(buf) {
+		// If buf is out of space, we're done
+		if len(buf)-offset < len(key) {
+			return lines
+		}
 		k := getNBytesFrom(buf[offset:], len(key), s.Index.Delimiter)
 		if bytes.Compare(k, key) > -1 {
 			break
