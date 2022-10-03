@@ -19,12 +19,13 @@ Usage
 ```
     import "github.com/ProfoundNetworks/bsearch"
 
-    // Instantiate searcher from a file
-    bss, err := bsearch.NewSearcherFile(filepath)
-    defer bss.Close()
+    // Create the index (also see cmd/bsearch_index for a CLI tool)
+    idx, err := bsearch.NewIndexOptions(filepath, IndexOptions{Delimiter: '|'})
+    idx.Write()
 
-    // Or instantiate searcher from an io.ReaderAt
-    bss := bsearch.NewSearcher(reader, datalen)
+    // Instantiate searcher from a file
+    bss, err := bsearch.NewSearcher(filepath)
+    defer bss.Close()
 
     // Find first line beginning with searchStr
     line, err := bss.Line([]byte(searchStr))
