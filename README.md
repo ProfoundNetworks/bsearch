@@ -20,6 +20,10 @@ Usage
     import "github.com/ProfoundNetworks/bsearch"
 
     // Create the index (also see cmd/bsearch_index for a CLI tool)
+    idx, err := bsearch.NewIndex(filepath)
+    idx.Write()
+
+    // Alternatively, if you need to tweak the options
     idx, err := bsearch.NewIndexOptions(filepath, IndexOptions{Delimiter: '|'})
     idx.Write()
 
