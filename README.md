@@ -21,11 +21,12 @@ Usage
 
     // Create the index (also see cmd/bsearch_index for a CLI tool)
     idx, err := bsearch.NewIndex(filepath)
-    idx.Write()
 
     // Alternatively, if you need to tweak the options
     idx, err := bsearch.NewIndexOptions(filepath, IndexOptions{Delimiter: '|'})
-    idx.Write()
+
+    // Persist the created index to disk, so that the searcher may use it
+    err = idx.Write()
 
     // Instantiate searcher from a file
     bss, err := bsearch.NewSearcher(filepath)
