@@ -25,6 +25,7 @@ func TestSearcherLine1(t *testing.T) {
 		{"223.252.003.000", "223.252.003.000,223-252-3-0.as45671.net,202003,as45671.net"},
 	}
 
+	ensureIndex(t, "rdns1.csv")
 	s, err := NewSearcher("testdata/rdns1.csv")
 	if err != nil {
 		t.Fatal(err)
@@ -59,6 +60,7 @@ func TestSearcherLine2(t *testing.T) {
 		{"zzz.com", ""},
 	}
 
+	ensureIndex(t, "domains1.csv")
 	s, err := NewSearcher("testdata/domains1.csv")
 	if err != nil {
 		t.Fatal(err)
@@ -95,6 +97,7 @@ func TestSearcherLine3(t *testing.T) {
 		{"zzz.com", ""},
 	}
 
+	ensureIndex(t, "domains2.csv")
 	o := SearcherOptions{Header: true}
 	/*
 		zerolog.SetGlobalLevel(zerolog.TraceLevel)
@@ -128,6 +131,7 @@ func TestSearcherLineFoo(t *testing.T) {
 		{"foo", "foo,2"},
 	}
 
+	ensureIndex(t, "foo.csv")
 	o := SearcherOptions{Header: true}
 	/*
 		zerolog.SetGlobalLevel(zerolog.TraceLevel)
@@ -160,6 +164,7 @@ alstom.com,alstom.com,ULT
 		{"alstom.com.br", "alstom.com.br,alstom.com,RED\n"},
 	}
 
+	ensureIndex(t, "alstom1.csv")
 	o := SearcherOptions{Header: false}
 	/*
 		zerolog.SetGlobalLevel(zerolog.TraceLevel)
@@ -204,6 +209,7 @@ alstom.com,alstom.com,ULT
 		{"alstom.com.br", "alstom.com.br,alstom.com,RED\n"},
 	}
 
+	ensureIndex(t, "alstom2.csv")
 	o := SearcherOptions{Header: true}
 	s, err := NewSearcherOptions("testdata/alstom2.csv", o)
 	if err != nil {
@@ -241,6 +247,7 @@ func TestSearcherLinesMultiBlock1(t *testing.T) {
 		{"alstom.com", "alstom.com,first", "alstom.com,last", 438},
 	}
 
+	ensureIndex(t, "alstom3.csv")
 	o := SearcherOptions{Header: true}
 	/*
 		zerolog.SetGlobalLevel(zerolog.TraceLevel)
@@ -283,6 +290,7 @@ func TestSearcherLinesMultiBlock2(t *testing.T) {
 		{"alstom.com", "alstom.com,first", "alstom.com,last"},
 	}
 
+	ensureIndex(t, "alstom4.csv")
 	o := SearcherOptions{Header: true}
 	s, err := NewSearcherOptions("testdata/alstom4.csv", o)
 	if err != nil {
@@ -321,6 +329,7 @@ func TestSearcherLinesFoo(t *testing.T) {
 		{"foo", 9999, "foo,2", "foo,10000"},
 	}
 
+	ensureIndex(t, "foo.csv")
 	o := SearcherOptions{Header: false}
 	s, err := NewSearcherOptions("testdata/foo.csv", o)
 	if err != nil {

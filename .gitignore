@@ -21,4 +21,7 @@
 /pkg/linux_amd64/*
 /pkg/*.*/
 /src/*.*/
+/testdata/*.bsx
+/testdata/*.bsy
+/testdata/*.bsz
 /var/*

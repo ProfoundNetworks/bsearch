@@ -12,17 +12,57 @@ import (
 func ensureNoIndex(t *testing.T, filename string) {
 	idxpath, err := IndexPath(filepath.Join("testdata", filename))
 	if err != nil {
-		t.Fatalf("%s: %s\n", filename, err.Error())
+		t.Fatalf("ensureNoIndex %s: %s\n", filename, err.Error())
 	}
 	_, err = os.Stat(idxpath)
 	if err != nil && !os.IsNotExist(err) {
-		t.Fatalf("%s: %s\n", filename, err.Error())
+		t.Fatalf("ensureNoIndex %s: %s\n", filename, err.Error())
 	}
 	if err == nil {
 		// idxpath exists!
 		err = os.Remove(idxpath)
 		if err != nil && !os.IsNotExist(err) {
 			t.Fatalf("removing index %s: %s\n", idxpath, err.Error())
+		}
+	}
+}
+
+// ensureIndex checks that an appropriate index exists for filename and creates it if not
+func ensureIndex(t *testing.T, filename string) {
+	path := filepath.Join("testdata", filename)
+	idxpath, err := IndexPath(path)
+	if err != nil {
+		t.Fatalf("ensureIndex %s: %s\n", filename, err.Error())
+	}
+	stat, err := os.Stat(idxpath)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("ensureIndex %s: %s\n", filename, err.Error())
+	}
+	if err != nil && os.IsNotExist(err) {
+		idx, err := NewIndex(path)
+		if err != nil {
+			t.Fatalf("ensureIndex NewIndex %s: %s\n", filename, err.Error())
+		}
+		err = idx.Write()
+		if err != nil {
+			t.Fatalf("ensureIndex index Write %s: %s\n", filename, err.Error())
+		}
+		return
+	}
+	// Index exists - check it is newer than file or recreate
+	fe, err := epoch(path)
+	if err != nil {
+		t.Fatalf("ensureIndex epoch %s: %s", filename, err.Error())
+	}
+	ie := stat.ModTime().Unix()
+	if fe > ie {
+		idx, err := NewIndex(idxpath)
+		if err != nil {
+			t.Fatalf("ensureIndex NewIndex %s: %s\n", idxpath, err.Error())
+		}
+		err = idx.Write()
+		if err != nil {
+			t.Fatalf("ensureIndex index Write %s: %s\n", idxpath, err.Error())
 		}
 	}
 }
@@ -40,11 +80,14 @@ func TestIndexLoad(t *testing.T) {
 	}
 
 	for _, tc := range tests {
+		ensureIndex(t, tc.filename)
+
 		idx, err := LoadIndex(filepath.Join("testdata", tc.filename))
 		if err != nil {
 			t.Fatalf("%s: %s\n", tc.filename, err.Error())
 		}
 		filedir, filename := filepath.Split(idx.Filepath)
+
 		assert.Equal(t, tc.filename, filename, tc.filename+" filename")
 		assert.Equal(t, "testdata", filepath.Base(filedir), tc.filename+" filedir")
 		assert.Equal(t, tc.delim, string(idx.Delimiter), tc.filename+" delimiter")
@@ -121,17 +164,18 @@ func TestIndexBlockEntryLE(t *testing.T) {
 	}{
 		{"000.001.000.000", "000.001.000.000", 0},
 		{"001.001.000.000", "000.001.000.000", 0},
-		{"002.055.255.255", "000.001.000.000", 0},
+		{"002.055.255.255", "001.024.000.000", 2079},
 		{"002.056.000.000", "002.056.000.000", 4113},
-		{"002.057.000.000", "002.056.000.000", 4113},
+		{"002.057.000.000", "002.056.171.000", 6163},
 		{"002.057.084.000", "002.057.084.000", 8213},
 		{"223.130.000.000", "223.130.000.000", 6504496},
-		{"255.255.255.255", "223.130.000.000", 6504496},
+		{"255.255.255.255", "223.223.000.000", 6506532},
 		// Error case - should return ErrIndexEntryNotFound
 		{"000.000.000.000", "", -1},
 	}
 
 	dataset := "rir_clc_ipv_range.csv"
+	ensureIndex(t, dataset)
 	idx, err := LoadIndex(filepath.Join("testdata", dataset))
 	if err != nil {
 		t.Fatalf("%s: %s\n", dataset, err.Error())
