@@ -86,7 +86,6 @@ func TestIndexFoo(t *testing.T) {
 
 // Test the index generated for testdata/rir_clc_ipv_range.csv
 func TestIndexRIR(t *testing.T) {
-	t.Skip("data file is missing")
 	idxopt := bsearch.IndexOptions{
 		Delimiter: []byte(","),
 	}
@@ -100,7 +99,7 @@ func TestIndexRIR(t *testing.T) {
 	assert.Equal(t, true, index.KeysIndexFirst)
 	assert.Equal(t, true, index.KeysUnique)
 	assert.Equal(t, 3178, index.Length)
-	assert.Equal(t, 2, index.Version)
+	assert.Equal(t, 3, index.Version)
 
 	fh, err := os.Open("testdata/rir_clc_ipv_range.csv")
 	if err != nil {
@@ -154,7 +153,6 @@ func TestIndexRIR(t *testing.T) {
 
 // Test the index generated for testdata/rir_clc_ipv_range.csv with Header true
 func TestIndexRIRHeader(t *testing.T) {
-	t.Skip("data file is missing")
 	idxopt := bsearch.IndexOptions{
 		Delimiter: []byte(","),
 		Header:    true,
@@ -170,7 +168,7 @@ func TestIndexRIRHeader(t *testing.T) {
 	assert.Equal(t, true, index.KeysIndexFirst)
 	assert.Equal(t, true, index.KeysUnique)
 	assert.Equal(t, 3178, index.Length)
-	assert.Equal(t, 2, index.Version)
+	assert.Equal(t, 3, index.Version)
 
 	fh, err := os.Open("testdata/rir_clc_ipv_range.csv")
 	if err != nil {
