@@ -309,13 +309,15 @@ func LoadIndex(path string) (*Index, error) {
 	}
 
 	//
-	// This check is counter productive, because it makes the indices tied to
-	// the file system they were created on: you cannot copy them to another
-	// location.
+	// Check that the file names match.  We want to ensure that the index we
+	// just loaded actually belongs with the file stored at the path; otherwise
+	// the search results will be junk.  We avoid checking the full path
+	// because that would prevent the data and indices from moving around the
+	// the file system.
 	//
-	// if index.Filepath != path {
-	//	return nil, ErrIndexPathMismatch
-	// }
+	if filepath.Base(index.Filepath) != filepath.Base(path) {
+		return nil, ErrIndexPathMismatch
+	}
 
 	fe, err := epoch(path)
 	if err != nil {
