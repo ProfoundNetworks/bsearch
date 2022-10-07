@@ -1,7 +1,7 @@
 /*
 Index provides an index implementation for bsearch.
 
-The index file is an uncompressed file. It has the same name and
+The index file is an uncompressed json+tsv file. It has the same name and
 location as the associated dataset, but with all '.' characters changed
 to '_', and a '.bsy' suffix e.g. the index for `test_foobar.csv` is
 `test_foobar_csv.bsy`.
