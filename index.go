@@ -1,10 +1,10 @@
 /*
 Index provides an index implementation for bsearch.
 
-The index file is a zstd-compressed yaml file. It has the same name and
+The index file is an uncompressed json+tsv file. It has the same name and
 location as the associated dataset, but with all '.' characters changed
-to '_', and a '.bsx' suffix e.g. the index for `test_foobar.csv` is
-`test_foobar_csv.bsx`.
+to '_', and a '.bsy' suffix e.g. the index for `test_foobar.csv` is
+`test_foobar_csv.bsy`.
 */
 
 package bsearch
@@ -12,24 +12,25 @@ package bsearch
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
-	"github.com/DataDog/zstd"
 	"github.com/rs/zerolog"
-	yaml "gopkg.in/yaml.v3"
 )
 
 const (
-	indexVersion     = 2
-	indexSuffix      = "bsx"
+	indexVersion     = 3
+	indexSuffix      = "bsy"
 	defaultBlocksize = 2048
+	recordSeparator  = '\n'
+	fieldSeparator   = '\t'
 )
 
 var (
@@ -47,22 +48,22 @@ type IndexOptions struct {
 }
 
 type IndexEntry struct {
-	Key    string `yaml:"k"`
-	Offset int64  `yaml:"o"` // file offset for start-of-block
+	Key    string
+	Offset int64 // file offset for start-of-block
 }
 
 // Index provides index metadata for the Filepath dataset
 type Index struct {
-	Blocksize      int             `yaml:"blocksize"`
-	Delimiter      []byte          `yaml:"delim"`
-	Epoch          int64           `yaml:"epoch"`
-	Filepath       string          `yaml:"filepath"`
-	Header         bool            `yaml:"header"`
-	KeysIndexFirst bool            `yaml:"keys_index_first"`
-	KeysUnique     bool            `yaml:"keys_unique"`
-	Length         int             `yaml:"length"`
-	List           []IndexEntry    `yaml:"list"`
-	Version        int             `yaml:"version"`
+	Blocksize      int
+	Delimiter      []byte
+	Epoch          int64
+	Filepath       string
+	Header         bool
+	KeysIndexFirst bool
+	KeysUnique     bool
+	Length         int
+	List           []IndexEntry `json:"-"`
+	Version        int
 	logger         *zerolog.Logger // debug logger
 }
 
@@ -289,28 +290,35 @@ func LoadIndex(path string) (*Index, error) {
 		}
 	}
 
-	var reader io.ReadCloser
 	fh, err := os.Open(idxpath)
 	if err != nil {
 		return nil, err
 	}
 	defer fh.Close()
-	reader = zstd.NewReader(fh)
-	defer reader.Close()
 
-	data, err := ioutil.ReadAll(reader)
+	reader := bufio.NewReader(fh)
+
+	firstLine, err := reader.ReadBytes('\n')
 	if err != nil {
 		return nil, err
 	}
-	index := Index{List: []IndexEntry{}}
-	yaml.Unmarshal(data, &index)
+	var index Index
+	err = json.Unmarshal(firstLine, &index)
+	if err != nil {
+		return nil, err
+	}
 
-	// Check index.Filepath == path
-	if index.Filepath != path {
+	//
+	// Check that the file names match.  We want to ensure that the index we
+	// just loaded actually belongs with the file stored at the path; otherwise
+	// the search results will be junk.  We avoid checking the full path
+	// because that would prevent the data and indices from moving around the
+	// the file system.
+	//
+	if filepath.Base(index.Filepath) != filepath.Base(path) {
 		return nil, ErrIndexPathMismatch
 	}
 
-	// Check file is not newer than index
 	fe, err := epoch(path)
 	if err != nil {
 		return nil, err
@@ -323,9 +331,31 @@ func LoadIndex(path string) (*Index, error) {
 		return nil, ErrIndexExpired
 	}
 
-	// Set index.Version to 1 if unset
 	if index.Version == 0 {
 		index.Version = 1
+	}
+
+	for counter := 0; counter < index.Length; counter++ {
+		line, err := reader.ReadString(recordSeparator)
+		lineNum := counter + 1
+		if err == io.EOF {
+			return nil, fmt.Errorf("malformed index: premature EOF on line %d", lineNum)
+		}
+		line = strings.TrimRight(line, string(recordSeparator))
+		pair := strings.SplitN(line, string(fieldSeparator), 2)
+		if len(pair) != 2 {
+			return nil, fmt.Errorf("malformed index: line %d (%q) contains a malformed pair", lineNum, line)
+		}
+
+		offset, err := strconv.ParseInt(pair[0], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("malformed index: line %d contains a bad offset: %w", lineNum, err)
+		}
+		key, err := strconv.Unquote(pair[1])
+		if err != nil {
+			return nil, fmt.Errorf("malformed index: line %d contains a bad key: %w", lineNum, err)
+		}
+		index.List = append(index.List, IndexEntry{Key: key, Offset: offset})
 	}
 
 	return &index, nil
@@ -425,28 +455,53 @@ func (i *Index) blockEntryN(n int) (IndexEntry, bool) {
 
 // Write writes the index to disk
 func (i *Index) Write() error {
-	data, err := yaml.Marshal(i)
+	data, err := json.Marshal(i)
 	if err != nil {
 		return err
 	}
 
 	filedir, filename := filepath.Split(i.Filepath)
 	idxpath := filepath.Join(filedir, indexFile(filename))
-	var writer io.WriteCloser
+
 	fh, err := os.OpenFile(idxpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
-	writer = zstd.NewWriter(fh)
-	defer fh.Close()
 
+	abort := func() { os.Remove(idxpath) }
+
+	writer := bufio.NewWriter(fh)
 	_, err = writer.Write(data)
 	if err != nil {
+		abort()
 		return err
 	}
 
-	err = writer.Close()
+	err = writer.WriteByte(recordSeparator)
 	if err != nil {
+		abort()
+		return err
+	}
+
+	for _, entry := range i.List {
+		record := fmt.Sprintf(
+			"%d%c%s%c",
+			entry.Offset,
+			fieldSeparator,
+			strconv.Quote(entry.Key),
+			recordSeparator,
+		)
+		_, err = writer.WriteString(record)
+		if err != nil {
+			abort()
+			return err
+		}
+	}
+
+	writer.Flush()
+	err = fh.Close()
+	if err != nil {
+		abort()
 		return err
 	}
 

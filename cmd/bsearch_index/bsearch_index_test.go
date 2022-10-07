@@ -22,7 +22,7 @@ func TestIndexFoo(t *testing.T) {
 	assert.Equal(t, true, index.KeysIndexFirst)
 	assert.Equal(t, false, index.KeysUnique)
 	assert.Equal(t, 2, len(index.List))
-	assert.Equal(t, 2, index.Version)
+	assert.Equal(t, 3, index.Version)
 
 	fh, err := os.Open("testdata/foo.csv")
 	if err != nil {
@@ -68,6 +68,20 @@ func TestIndexFoo(t *testing.T) {
 			assert.Equal(t, expect, string(buf[len(buf)-l:len(buf)-1]))
 		}
 	}
+
+	indexpath := "testdata/foo_csv.bsy"
+	err = index.Write()
+	if err != nil {
+		t.Fatalf("could not write index to %q: %s", indexpath, err)
+	}
+
+	defer func() { os.Remove(indexpath) }()
+
+	loaded, err := bsearch.LoadIndex("testdata/foo.csv")
+	if err != nil {
+		t.Fatalf("could not load index from %q: %s", indexpath, err)
+	}
+	assert.Equal(t, index, loaded)
 }
 
 // Test the index generated for testdata/rir_clc_ipv_range.csv
@@ -85,7 +99,7 @@ func TestIndexRIR(t *testing.T) {
 	assert.Equal(t, true, index.KeysIndexFirst)
 	assert.Equal(t, true, index.KeysUnique)
 	assert.Equal(t, 3178, index.Length)
-	assert.Equal(t, 2, index.Version)
+	assert.Equal(t, 3, index.Version)
 
 	fh, err := os.Open("testdata/rir_clc_ipv_range.csv")
 	if err != nil {
@@ -154,7 +168,7 @@ func TestIndexRIRHeader(t *testing.T) {
 	assert.Equal(t, true, index.KeysIndexFirst)
 	assert.Equal(t, true, index.KeysUnique)
 	assert.Equal(t, 3178, index.Length)
-	assert.Equal(t, 2, index.Version)
+	assert.Equal(t, 3, index.Version)
 
 	fh, err := os.Open("testdata/rir_clc_ipv_range.csv")
 	if err != nil {
