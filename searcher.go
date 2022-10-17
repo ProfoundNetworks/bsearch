@@ -17,7 +17,6 @@ import (
 	"regexp"
 
 	"github.com/rs/zerolog"
-	"golang.org/x/sys/unix"
 	"launchpad.net/gommap"
 )
 
@@ -120,53 +119,9 @@ func NewSearcherOptions(path string, opt SearcherOptions) (*Searcher, error) {
 
 	// Load index
 	s.Index, err = LoadIndex(path)
-	if err != nil && err != ErrNotFound &&
-		err != ErrIndexExpired && err != ErrIndexPathMismatch {
-		return nil, err
-	}
-	if err == nil {
-		// Existing index found/loaded - sanity check against explicit options
-		// (or we fallthrough and re-create the index below)
-		if (len(opt.Delimiter) == 0 ||
-			bytes.Compare(opt.Delimiter, s.Index.Delimiter) == 0) &&
-			(opt.Header == false || opt.Header == s.Index.Header) {
-			return &s, nil
-		}
-	}
-
-	// ErrNotFound, or an expired/mismatched index of some kind
-	if s.logger != nil {
-		s.logger.Debug().
-			Bool("expired", err == ErrIndexExpired).
-			Bool("path_mismatch", err == ErrIndexPathMismatch).
-			Str("path", path).
-			Msg("expired/mismatched index")
-	}
-	// Check that we have write permissions to the index
-	idxErr := err
-	idxpath, err := IndexPath(path)
 	if err != nil {
 		return nil, err
 	}
-	err = unix.Access(idxpath, unix.W_OK)
-	if err != nil {
-		// If we cannot write to the index, return the original idxErr
-		return nil, idxErr
-	}
-
-	idxopt := IndexOptions{
-		Delimiter: opt.Delimiter,
-		Header:    opt.Header,
-	}
-	s.Index, err = NewIndexOptions(path, idxopt)
-	if err != nil {
-		return nil, err
-	}
-	err = s.Index.Write()
-	if err != nil {
-		return nil, err
-	}
-
 	return &s, nil
 }
 
