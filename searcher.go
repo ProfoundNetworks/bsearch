@@ -243,16 +243,6 @@ func (s *Searcher) LinesN(key []byte, n int) ([][]byte, error) {
 		n = 1
 	}
 
-	/*
-		// FIXME: revisit compression
-		if s.isCompressed() {
-			if s.Index == nil {
-				return [][]byte{}, ErrIndexNotFound
-			}
-			return s.scanCompressedLines(key, n)
-		}
-	*/
-
 	// If no index exists, build and use a temporary one (but don't write)
 	if s.Index == nil {
 		index, err := NewIndex(s.filepath)

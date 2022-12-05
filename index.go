@@ -116,6 +116,16 @@ func deriveDelimiter(filename string) ([]byte, error) {
 // generating index entries for the first full line in each block
 // (or the first instance of that key, if repeating)
 func generateLineIndex(index *Index, reader io.ReaderAt) error {
+	//
+	// buf: A buffer large enough to hold an entire block
+	// scanner:
+	// list: Our resulting list of IndexEntry objects
+	// blockPosition: The offset of the current block from the beginning of the file
+	// blockNumber: The ordinal number of the current block
+	// prevKey:
+	// firstOffset:
+	// skipHeader: Set to true if the file contains a header that should be skipped
+	//
 	// Process dataset line-by-line
 	buf := make([]byte, index.Blocksize)
 	scanner := bufio.NewScanner(reader.(io.Reader))
