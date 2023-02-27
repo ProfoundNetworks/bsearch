@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	indexVersion     = 3
+	indexVersion     = 4
 	indexSuffix      = "bsy"
 	defaultBlocksize = 2048
 	recordSeparator  = '\n'
@@ -52,12 +52,16 @@ type IndexEntry struct {
 	Offset int64 // file offset for start-of-block
 }
 
-// Index provides index metadata for the Filepath dataset
+// Index provides index metadata for the filepath dataset
 type Index struct {
-	Blocksize      int
-	Delimiter      []byte
-	Epoch          int64
-	Filepath       string
+	Blocksize int
+	Delimiter []byte
+	Epoch     int64
+	// Filepath is no longer exported (it is explicitly emptied in Write()),
+	// but we keep it capitalised to accept old indices that used it
+	// instead of Filename
+	Filepath       string `json:",omitempty"`
+	Filename       string
 	Header         bool
 	KeysIndexFirst bool
 	KeysUnique     bool
@@ -83,7 +87,7 @@ func indexFile(filename string) string {
 	return basename + "." + indexSuffix
 }
 
-// IndexPath returns the filepath of the index assocated with path
+// IndexPath returns the absolute filepath of the index file assocated with path
 func IndexPath(path string) (string, error) {
 	var err error
 	path, err = filepath.Abs(path)
@@ -262,6 +266,7 @@ func NewIndexOptions(path string, opt IndexOptions) (*Index, error) {
 	index.Delimiter = delim
 	index.Epoch = epoch
 	index.Filepath = path
+	index.Filename = filepath.Base(path)
 	// FIXME: do we honour index.Header if true??
 	index.Header = opt.Header
 	index.Version = indexVersion
@@ -317,15 +322,21 @@ func LoadIndex(path string) (*Index, error) {
 	if err != nil {
 		return nil, err
 	}
+	// New indices set Filename, and we derive Filepath
+	if index.Filename != "" {
+		index.Filepath = filepath.Join(filepath.Dir(path), index.Filename)
+	} else if index.Filepath != "" {
+		// Whereas old indices used Filepath instead, so derive Filename
+		index.Filename = filepath.Base(index.Filepath)
+	}
 
-	//
-	// Check that the file names match.  We want to ensure that the index we
-	// just loaded actually belongs with the file stored at the path; otherwise
-	// the search results will be junk.  We avoid checking the full path
-	// because that would prevent the data and indices from moving around the
-	// the file system.
-	//
-	if filepath.Base(index.Filepath) != filepath.Base(path) {
+	// Check that the file paths match to ensure that the index we loaded
+	// actually belongs with the file stored at path, since otherwise the
+	// search results will be junk.
+	if (index.Version >= 4 && index.Filepath != path) ||
+		(index.Version == 3 && filepath.Base(index.Filepath) != index.Filename) {
+		fmt.Fprintf(os.Stderr, "ErrIndexPathMismatch: path %q, index.Filepath %q",
+			path, index.Filepath)
 		return nil, ErrIndexPathMismatch
 	}
 
@@ -465,13 +476,8 @@ func (i *Index) blockEntryN(n int) (IndexEntry, bool) {
 
 // Write writes the index to disk
 func (i *Index) Write() error {
-	data, err := json.Marshal(i)
-	if err != nil {
-		return err
-	}
-
-	filedir, filename := filepath.Split(i.Filepath)
-	idxpath := filepath.Join(filedir, indexFile(filename))
+	filedir := filepath.Dir(i.Filepath)
+	idxpath := filepath.Join(filedir, indexFile(i.Filename))
 
 	fh, err := os.OpenFile(idxpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
@@ -479,6 +485,14 @@ func (i *Index) Write() error {
 	}
 
 	abort := func() { os.Remove(idxpath) }
+
+	// Reset Filepath, since it's not required for reads
+	i.Filepath = ""
+
+	data, err := json.Marshal(i)
+	if err != nil {
+		return err
+	}
 
 	writer := bufio.NewWriter(fh)
 	_, err = writer.Write(data)

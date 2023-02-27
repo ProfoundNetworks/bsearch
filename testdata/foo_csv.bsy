@@ -1,0 +1,3 @@
+{"Blocksize":2048,"Delimiter":"LA==","Epoch":1677466889,"Filename":"foo.csv","Header":true,"KeysIndexFirst":true,"KeysUnique":false,"Length":2,"Version":4}
+13	"bar"
+19	"foo"

@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ProfoundNetworks/bsearch"
@@ -17,12 +18,16 @@ func TestIndexFoo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assert.Equal(t, "foo.csv", filepath.Base(index.Filepath))
+	assert.Equal(t, "foo.csv", index.Filename, "Filename")
+	if !strings.HasSuffix(index.Filepath, "/testdata/foo.csv") {
+		t.Errorf("foo.csv Filepath %q does not end with %q",
+			index.Filepath, "/testdata/foo.csv")
+	}
 	assert.Equal(t, true, index.Header)
 	assert.Equal(t, true, index.KeysIndexFirst)
 	assert.Equal(t, false, index.KeysUnique)
 	assert.Equal(t, 2, len(index.List))
-	assert.Equal(t, 3, index.Version)
+	assert.Equal(t, 4, index.Version)
 
 	fh, err := os.Open("testdata/foo.csv")
 	if err != nil {
@@ -69,18 +74,24 @@ func TestIndexFoo(t *testing.T) {
 		}
 	}
 
-	indexpath := "testdata/foo_csv.bsy"
+	// Write resets Filepath, so capture and restore below
+	path := index.Filepath
+	indexpath, err := bsearch.IndexPath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { os.Remove(indexpath) }()
 	err = index.Write()
 	if err != nil {
 		t.Fatalf("could not write index to %q: %s", indexpath, err)
 	}
 
-	defer func() { os.Remove(indexpath) }()
-
 	loaded, err := bsearch.LoadIndex("testdata/foo.csv")
 	if err != nil {
 		t.Fatalf("could not load index from %q: %s", indexpath, err)
 	}
+	// Restore index.Filepath
+	index.Filepath = path
 	assert.Equal(t, index, loaded)
 }
 
@@ -99,7 +110,7 @@ func TestIndexRIR(t *testing.T) {
 	assert.Equal(t, true, index.KeysIndexFirst)
 	assert.Equal(t, true, index.KeysUnique)
 	assert.Equal(t, 3178, index.Length)
-	assert.Equal(t, 3, index.Version)
+	assert.Equal(t, 4, index.Version)
 
 	fh, err := os.Open("testdata/rir_clc_ipv_range.csv")
 	if err != nil {
@@ -168,7 +179,7 @@ func TestIndexRIRHeader(t *testing.T) {
 	assert.Equal(t, true, index.KeysIndexFirst)
 	assert.Equal(t, true, index.KeysUnique)
 	assert.Equal(t, 3178, index.Length)
-	assert.Equal(t, 3, index.Version)
+	assert.Equal(t, 4, index.Version)
 
 	fh, err := os.Open("testdata/rir_clc_ipv_range.csv")
 	if err != nil {

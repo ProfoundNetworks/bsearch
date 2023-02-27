@@ -3,6 +3,7 @@ package bsearch
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -27,7 +28,8 @@ func ensureNoIndex(t *testing.T, filename string) {
 	}
 }
 
-// ensureIndex checks that an appropriate index exists for filename and creates it if not
+// ensureIndex checks that an appropriate index exists for filename and
+// creates it if not
 func ensureIndex(t *testing.T, filename string) {
 	path := filepath.Join("testdata", filename)
 	idxpath, err := IndexPath(path)
@@ -56,26 +58,56 @@ func ensureIndex(t *testing.T, filename string) {
 	}
 	ie := stat.ModTime().Unix()
 	if fe > ie {
-		idx, err := NewIndex(idxpath)
+		idx, err := NewIndex(path)
 		if err != nil {
-			t.Fatalf("ensureIndex NewIndex %s: %s\n", idxpath, err.Error())
+			t.Fatalf("ensureIndex NewIndex on %q: %s\n", path, err.Error())
 		}
 		err = idx.Write()
 		if err != nil {
-			t.Fatalf("ensureIndex index Write %s: %s\n", idxpath, err.Error())
+			t.Fatalf("ensureIndex index Write for %q: %s\n", path, err.Error())
 		}
 	}
 }
 
-// Test LoadIndex()
-func TestIndexLoad(t *testing.T) {
+func TestIndexPath(t *testing.T) {
+	var tests = []struct {
+		filepath  string
+		indexpath string
+	}{
+		{"bar.csv", "bar_csv.bsy"},
+		{"/a/b/c/bar.csv", "/a/b/c/bar_csv.bsy"},
+	}
+	for _, tc := range tests {
+		ipath, err := IndexPath(tc.filepath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !filepath.IsAbs(ipath) {
+			t.Errorf("IndexPath for %q is not absolute: %s",
+				tc.filepath, ipath)
+		}
+		if filepath.IsAbs(tc.indexpath) {
+			if ipath != tc.indexpath {
+				t.Errorf("IndexPath for %q is %q, want %q",
+					tc.filepath, ipath, tc.indexpath)
+			}
+		} else {
+			if !strings.HasSuffix(ipath, "/"+filepath.Base(tc.indexpath)) {
+				t.Errorf("IndexPath for %q is %q - does not have expected base %q",
+					tc.filepath, ipath, filepath.Base(tc.indexpath))
+			}
+		}
+	}
+}
+
+// Test LoadIndex on v4 index files
+func TestLoadIndexV4(t *testing.T) {
 	var tests = []struct {
 		filename string
 		delim    string
 		header   bool
 		listlen  int
 	}{
-		{"domains2.csv", ",", true, 1},
 		{"foo.csv", ",", true, 2},
 	}
 
@@ -86,10 +118,36 @@ func TestIndexLoad(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %s\n", tc.filename, err.Error())
 		}
-		filedir, filename := filepath.Split(idx.Filepath)
 
-		assert.Equal(t, tc.filename, filename, tc.filename+" filename")
-		assert.Equal(t, "testdata", filepath.Base(filedir), tc.filename+" filedir")
+		assert.Equal(t, tc.filename, idx.Filename, tc.filename+" filename")
+		assert.Equal(t, tc.delim, string(idx.Delimiter), tc.filename+" delimiter")
+		assert.Equal(t, tc.header, idx.Header, tc.filename+" header")
+		assert.Greater(t, idx.Epoch, int64(0), tc.filename+" epoch")
+		assert.Equal(t, tc.listlen, len(idx.List), tc.filename+" listlen")
+	}
+}
+
+// Test LoadIndex on v3 index files
+func TestLoadIndexV3(t *testing.T) {
+	var tests = []struct {
+		filename string
+		delim    string
+		header   bool
+		listlen  int
+	}{
+		{"domains2.csv", ",", true, 1},
+		{"foo3.csv", ",", true, 2},
+	}
+
+	for _, tc := range tests {
+		ensureIndex(t, tc.filename)
+
+		idx, err := LoadIndex(filepath.Join("testdata", tc.filename))
+		if err != nil {
+			t.Fatalf("%s: %s\n", tc.filename, err.Error())
+		}
+
+		assert.Equal(t, tc.filename, idx.Filename, tc.filename+" filename")
 		assert.Equal(t, tc.delim, string(idx.Delimiter), tc.filename+" delimiter")
 		assert.Equal(t, tc.header, idx.Header, tc.filename+" header")
 		assert.Greater(t, idx.Epoch, int64(0), tc.filename+" epoch")
@@ -116,9 +174,7 @@ func TestIndexNew(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %s\n", tc.filename, err.Error())
 		}
-		filedir, filename := filepath.Split(idx.Filepath)
-		assert.Equal(t, tc.filename, filename, tc.filename+" filename")
-		assert.Equal(t, "testdata", filepath.Base(filedir), tc.filename+" filedir")
+		assert.Equal(t, tc.filename, idx.Filename, tc.filename+" filename")
 		assert.Equal(t, tc.delim, string(idx.Delimiter), tc.filename+" delimiter")
 		assert.Equal(t, tc.header, idx.Header, tc.filename+" header")
 		assert.Greater(t, idx.Epoch, int64(0), tc.filename+" epoch")
@@ -145,9 +201,7 @@ func TestIndexNewDelimiter(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %s\n", tc.filename, err.Error())
 		}
-		filedir, filename := filepath.Split(idx.Filepath)
-		assert.Equal(t, tc.filename, filename, tc.filename+" filename")
-		assert.Equal(t, "testdata", filepath.Base(filedir), tc.filename+" filedir")
+		assert.Equal(t, tc.filename, idx.Filename, tc.filename+" filename")
 		assert.Equal(t, tc.delim, string(idx.Delimiter), tc.filename+" delimiter")
 		assert.Equal(t, tc.header, idx.Header, tc.filename+" header")
 		assert.Greater(t, idx.Epoch, int64(0), tc.filename+" epoch")
