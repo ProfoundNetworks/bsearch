@@ -80,7 +80,7 @@ func TestIndexFoo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { os.Remove(indexpath) }()
+	defer os.Remove(indexpath)
 	err = index.Write()
 	if err != nil {
 		t.Fatalf("could not write index to %q: %s", indexpath, err)

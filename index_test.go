@@ -11,6 +11,7 @@ import (
 
 // ensureNoIndex removes any existing index, when we don't want to load
 func ensureNoIndex(t *testing.T, filename string) {
+	t.Helper()
 	idxpath, err := IndexPath(filepath.Join("testdata", filename))
 	if err != nil {
 		t.Fatalf("ensureNoIndex %s: %s\n", filename, err.Error())
@@ -31,6 +32,7 @@ func ensureNoIndex(t *testing.T, filename string) {
 // ensureIndex checks that an appropriate index exists for filename and
 // creates it if not
 func ensureIndex(t *testing.T, filename string) {
+	t.Helper()
 	path := filepath.Join("testdata", filename)
 	idxpath, err := IndexPath(path)
 	if err != nil {
