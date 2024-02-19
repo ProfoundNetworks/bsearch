@@ -105,12 +105,13 @@ func TestIndexPath(t *testing.T) {
 // Test LoadIndex on v4 index files
 func TestLoadIndexV4(t *testing.T) {
 	var tests = []struct {
-		filename string
-		delim    string
-		header   bool
-		listlen  int
+		filename     string
+		delim        string
+		header       bool
+		listlen      int
+		headerFields []string
 	}{
-		{"foo.csv", ",", true, 2},
+		{"foo.csv", ",", true, 2, []string{"label", "lineno"}},
 	}
 
 	for _, tc := range tests {
@@ -126,6 +127,7 @@ func TestLoadIndexV4(t *testing.T) {
 		assert.Equal(t, tc.header, idx.Header, tc.filename+" header")
 		assert.Greater(t, idx.Epoch, int64(0), tc.filename+" epoch")
 		assert.Equal(t, tc.listlen, len(idx.List), tc.filename+" listlen")
+		assert.Equal(t, tc.headerFields, idx.HeaderFields, tc.filename+" headerFields")
 	}
 }
 
@@ -158,7 +160,7 @@ func TestLoadIndexV3(t *testing.T) {
 }
 
 // Test NewIndex()
-func TestIndexNew(t *testing.T) {
+func TestNewIndex(t *testing.T) {
 	var tests = []struct {
 		filename string
 		delim    string
@@ -185,20 +187,22 @@ func TestIndexNew(t *testing.T) {
 }
 
 // Test NewIndexOptions()
-func TestIndexNewDelimiter(t *testing.T) {
+func TestNewIndexOptions(t *testing.T) {
 	var tests = []struct {
-		filename string
-		delim    string
-		header   bool
-		listlen  int
+		filename     string
+		delim        string
+		header       bool
+		listlen      int
+		headerFields []string
 	}{
-		{"indexme.csv", ",", false, 1},
+		{"indexme.csv", ",", false, 1, []string(nil)},
+		{"foo2.csv", ",", true, 2, []string{"label1", "label2", "lineno"}},
 	}
 
 	for _, tc := range tests {
 		ensureNoIndex(t, tc.filename)
 
-		o := IndexOptions{Delimiter: []byte(tc.delim)}
+		o := IndexOptions{Delimiter: []byte(tc.delim), Header: tc.header}
 		idx, err := NewIndexOptions(filepath.Join("testdata", tc.filename), o)
 		if err != nil {
 			t.Fatalf("%s: %s\n", tc.filename, err.Error())
@@ -208,6 +212,7 @@ func TestIndexNewDelimiter(t *testing.T) {
 		assert.Equal(t, tc.header, idx.Header, tc.filename+" header")
 		assert.Greater(t, idx.Epoch, int64(0), tc.filename+" epoch")
 		assert.Equal(t, tc.listlen, len(idx.List), tc.filename+" listlen")
+		assert.Equal(t, tc.headerFields, idx.HeaderFields, tc.filename+" headerFields")
 	}
 }
 

@@ -68,6 +68,7 @@ type Index struct {
 	Length         int
 	List           []IndexEntry `json:"-"`
 	Version        int
+	HeaderFields   []string        `json:",omitempty"`
 	logger         *zerolog.Logger // debug logger
 }
 
@@ -138,17 +139,20 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 	var blockPosition int64 = 0
 	var blockNumber int64 = -1
 	prevKey := []byte{}
+	prevLine := []byte{}
 	var firstOffset int64 = -1
 	index.KeysUnique = true
-	// If index.Header is set, skip the first line of the dataset,
-	// begin indexing from the second
 	skipHeader := index.Header
 	for scanner.Scan() {
 		line := scanner.Bytes()
 
 		if skipHeader {
+			// If index.Header is set, skip the first line of the dataset,
+			// begin indexing from the second
 			skipHeader = false
 			blockPosition += int64(len(line) + 1)
+			index.HeaderFields = strings.Split(string(line),
+				string(index.Delimiter))
 			continue
 		}
 
@@ -171,6 +175,8 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 			// FIXME: should we have an option to disallow this?
 			if blockNumber == 0 && !index.Header {
 				index.Header = true
+				index.HeaderFields = strings.Split(string(prevLine),
+					string(index.Delimiter))
 				// Reset list and blockNumber to restart
 				list = []IndexEntry{}
 				blockNumber = -1
@@ -211,6 +217,9 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 		if !dupKeyBlock {
 			firstOffset = blockPosition
 			prevKey = clonebs(key)
+		}
+		if blockNumber == 0 {
+			prevLine = clonebs(line)
 		}
 		blockPosition += int64(len(line) + 1)
 	}
@@ -267,7 +276,6 @@ func NewIndexOptions(path string, opt IndexOptions) (*Index, error) {
 	index.Epoch = epoch
 	index.Filepath = path
 	index.Filename = filepath.Base(path)
-	// FIXME: do we honour index.Header if true??
 	index.Header = opt.Header
 	index.Version = indexVersion
 	if opt.Logger != nil {
