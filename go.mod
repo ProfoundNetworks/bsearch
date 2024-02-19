@@ -4,6 +4,7 @@ go 1.13
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/jessevdk/go-flags v1.5.0
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/rs/zerolog v1.26.1

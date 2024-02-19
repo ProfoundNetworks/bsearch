@@ -7,6 +7,7 @@ package bsearch
 
 import (
 	"bytes"
+	"encoding/csv"
 	"fmt"
 	"io"
 )
@@ -58,6 +59,28 @@ func (db *DB) GetString(key string) (string, error) {
 		return "", err
 	}
 	return string(val), nil
+}
+
+// GetSlice returns the (first) value associated with key in db as a string
+// slice (read using a csv.Reader with the appropriate Delimiter)
+// (or returns ErrNotFound if missing)
+func (db *DB) GetSlice(key string) ([]string, error) {
+	val, err := db.Get([]byte(key))
+	if err != nil {
+		return []string{}, err
+	}
+	delim := string(db.bss.Index.Delimiter)
+	if len(delim) > 1 {
+		return []string{},
+			fmt.Errorf("cannot convert multi-character delimiter %q to rune", delim)
+	}
+	reader := csv.NewReader(bytes.NewReader(val))
+	reader.Comma = rune(delim[0])
+	s, err := reader.Read()
+	if err != nil {
+		return []string{}, err
+	}
+	return s, nil
 }
 
 // Close closes our Searcher's underlying reader (if applicable)

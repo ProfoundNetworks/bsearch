@@ -55,6 +55,8 @@ type IndexEntry struct {
 // Index provides index metadata for the filepath dataset
 type Index struct {
 	Blocksize int
+	// FIXME: Delimiter should really be a rune, not an arbitrarily-length []byte
+	// Can we change without bumping the index version?
 	Delimiter []byte
 	Epoch     int64
 	// Filepath is no longer exported (it is explicitly emptied in Write()),
