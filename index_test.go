@@ -196,7 +196,7 @@ func TestNewIndexOptions(t *testing.T) {
 		headerFields []string
 	}{
 		{"indexme.csv", ",", false, 1, []string(nil)},
-		{"foo2.csv", ",", true, 2, []string{"label1", "label2", "lineno"}},
+		{"foo2.csv", ",", true, 2, []string{"label1", "label2, with comma", "lineno"}},
 	}
 
 	for _, tc := range tests {

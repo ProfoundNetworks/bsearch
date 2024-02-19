@@ -1,4 +1,4 @@
-label1,label2,lineno
+label1,"label2, with comma","lineno"
 bar,bar,1
 foo,bar,2
 foo,bar,3

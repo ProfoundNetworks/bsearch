@@ -12,6 +12,7 @@ package bsearch
 import (
 	"bufio"
 	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -119,6 +120,16 @@ func deriveDelimiter(filename string) ([]byte, error) {
 	return []byte{}, ErrUnknownDelimiter
 }
 
+func csvSplitBytes(line []byte, delim string) ([]string, error) {
+	reader := csv.NewReader(bytes.NewReader(line))
+	reader.Comma = rune(delim[0])
+	s, err := reader.Read()
+	if err != nil {
+		return []string{}, err
+	}
+	return s, nil
+}
+
 // generateLineIndex processes the input from reader line-by-line,
 // generating index entries for the first full line in each block
 // (or the first instance of that key, if repeating)
@@ -153,8 +164,11 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 			// begin indexing from the second
 			skipHeader = false
 			blockPosition += int64(len(line) + 1)
-			index.HeaderFields = strings.Split(string(line),
-				string(index.Delimiter))
+			fields, err := csvSplitBytes(line, string(index.Delimiter))
+			if err != nil {
+				return err
+			}
+			index.HeaderFields = fields
 			continue
 		}
 
@@ -177,8 +191,11 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 			// FIXME: should we have an option to disallow this?
 			if blockNumber == 0 && !index.Header {
 				index.Header = true
-				index.HeaderFields = strings.Split(string(prevLine),
-					string(index.Delimiter))
+				fields, err := csvSplitBytes(prevLine, string(index.Delimiter))
+				if err != nil {
+					return err
+				}
+				index.HeaderFields = fields
 				// Reset list and blockNumber to restart
 				list = []IndexEntry{}
 				blockNumber = -1
