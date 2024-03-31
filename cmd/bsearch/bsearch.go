@@ -3,9 +3,12 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
+	"strings"
 
 	"github.com/ProfoundNetworks/bsearch"
 	flags "github.com/jessevdk/go-flags"
@@ -18,6 +21,7 @@ var opts struct {
 	Verbose []bool `short:"v" long:"verbose" description:"display verbose debug output"`
 	Header  bool   `short:"H" long:"hdr" description:"ignore first line (header) in Filename when doing lookups"`
 	Rev     bool   `short:"r" long:"rev" description:"reverse SearchString for search, and reverse output lines when printing"`
+	Stdin   bool   `short:"c" long:"stdin" description:"read SearchStrings from standard input instead of command line"`
 	Args    struct {
 		SearchString string
 		Filename     string
@@ -90,6 +94,48 @@ func main() {
 		log.Info().
 			Str("path", idxpath).
 			Msg("using index")
+	}
+
+	if opts.Stdin {
+		reader := bufio.NewReader(os.Stdin)
+
+		for {
+			lineBytes, err := reader.ReadBytes('\n')
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				die(err.Error())
+			}
+
+			searchStr := strings.Trim(string(lineBytes), "\n")
+			if opts.Rev {
+				searchStr = reverse(searchStr)
+			}
+
+			results, err := bss.Lines([]byte(searchStr))
+			if err == bsearch.ErrNotFound {
+				fmt.Println()
+				continue
+			} else if err != nil {
+				die(err.Error())
+			}
+
+			for _, r := range results {
+				rs := string(r)
+				if opts.Rev {
+					fmt.Println(reverse(rs))
+				} else {
+					fmt.Println(rs)
+				}
+			}
+
+			//
+			// Nb. blank line means no more results
+			//
+			fmt.Println()
+		}
+
+		os.Exit(0)
 	}
 
 	searchStr := opts.Args.SearchString
