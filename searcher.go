@@ -17,7 +17,7 @@ import (
 	"regexp"
 
 	"github.com/rs/zerolog"
-	"launchpad.net/gommap"
+	mmap "github.com/edsrzf/mmap-go"
 )
 
 var (
@@ -101,7 +101,7 @@ func NewSearcherOptions(path string, opt SearcherOptions) (*Searcher, error) {
 	}
 
 	// Mmap file
-	mmap, err := gommap.Map(rdr.Fd(), gommap.PROT_READ, gommap.MAP_PRIVATE)
+	mmap, err := mmap.Map(rdr, mmap.RDONLY, 0)
 	if err != nil {
 		return nil, err
 	}
