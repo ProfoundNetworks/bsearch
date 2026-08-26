@@ -11,10 +11,11 @@ import (
 	"regexp"
 	"strings"
 
+	"log/slog"
+
 	"github.com/ProfoundNetworks/bsearch"
 	flags "github.com/jessevdk/go-flags"
-	"github.com/rs/zerolog"
-	log "github.com/rs/zerolog/log"
+	"github.com/lmittmann/tint"
 )
 
 // Options
@@ -118,17 +119,7 @@ func main() {
 	}
 
 	// Setup
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-	switch len(opts.Verbose) {
-	case 0:
-		zerolog.SetGlobalLevel(zerolog.WarnLevel)
-	case 1:
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	case 2:
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	default:
-		zerolog.SetGlobalLevel(zerolog.TraceLevel)
-	}
+	setupLogging(len(opts.Verbose))
 	var fh *os.File
 	if opts.Stdin {
 		fh = os.Stdin
@@ -139,9 +130,7 @@ func main() {
 		}
 	}
 	defaultSep()
-	log.Info().
-		Str("sep", opts.Sep).
-		Msg("")
+	slog.Info("", "sep", opts.Sep)
 	bss, err := bsearch.NewSearcher(opts.Args.CSVFile)
 	if err != nil {
 		die(err.Error())
@@ -202,4 +191,22 @@ func main() {
 	if len(batch) > 0 {
 		processBatch(bss, prevKey, batch, rownum)
 	}
+}
+
+// setupLogging configures the default slog logger to write human-readable
+// output to stderr, with the level set from the number of -v flags given.
+func setupLogging(verbosity int) {
+	level := slog.LevelWarn
+	switch verbosity {
+	case 0:
+		level = slog.LevelWarn
+	case 1:
+		level = slog.LevelInfo
+	default:
+		level = slog.LevelDebug
+	}
+	slog.SetDefault(slog.New(tint.NewHandler(os.Stderr, &tint.Options{
+		Level:      level,
+		TimeFormat: "15:04:05.000",
+	})))
 }

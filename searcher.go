@@ -16,7 +16,8 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"github.com/rs/zerolog"
+	"log/slog"
+
 	mmap "github.com/edsrzf/mmap-go"
 )
 
@@ -33,8 +34,8 @@ var (
 
 // SearcherOptions struct for use with NewSearcherOptions
 type SearcherOptions struct {
-	MatchLE bool            // use less-than-or-equal-to match semantics
-	Logger  *zerolog.Logger // debug logger
+	MatchLE bool         // use less-than-or-equal-to match semantics
+	Logger  *slog.Logger // debug logger
 	// Index options (used to check index or build new one)
 	Delimiter []byte // delimiter separating fields in dataset
 	Header    bool   // first line of dataset is header and should be ignored
@@ -43,13 +44,13 @@ type SearcherOptions struct {
 // Searcher provides binary search functionality on byte-ordered CSV-style
 // delimited text files.
 type Searcher struct {
-	r        io.ReaderAt     // data reader
-	l        int64           // data length
-	mmap     []byte          // data mmap
-	filepath string          // filename path
-	Index    *Index          // bsearch index
-	matchLE  bool            // LinePosition uses less-than-or-equal-to match semantics
-	logger   *zerolog.Logger // debug logger
+	r        io.ReaderAt  // data reader
+	l        int64        // data length
+	mmap     []byte       // data mmap
+	filepath string       // filename path
+	Index    *Index       // bsearch index
+	matchLE  bool         // LinePosition uses less-than-or-equal-to match semantics
+	logger   *slog.Logger // debug logger
 }
 
 //buf      []byte          // data buffer
@@ -202,14 +203,13 @@ func (s *Searcher) scanIndexedLines(key []byte, n int) ([][]byte, error) {
 		if s.Index.KeysIndexFirst {
 			blockEntry = "blockEntryLE"
 		}
-		s.logger.Trace().
-			Bytes("key", key).
-			Int("entryIndex", e).
-			Str("entry.Key", entry.Key).
-			Int64("entry.Offset", entry.Offset).
-			//Int64("entry.Length", entry.Length).
-			Str("blockEntry", blockEntry).
-			Msg("scanIndexedLines blockEntryXX returned")
+		s.logger.Debug("scanIndexedLines blockEntryXX returned",
+			"key", string(key),
+			"entryIndex", e,
+			"entry.Key", entry.Key,
+			"entry.Offset", entry.Offset,
+			//"entry.Length", entry.Length,
+			"blockEntry", blockEntry)
 	}
 
 	lines = s.scanLinesWithKey(s.mmap[entry.Offset:], key, n)

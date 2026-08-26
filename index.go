@@ -17,13 +17,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
-
-	"github.com/rs/zerolog"
 )
 
 const (
@@ -45,7 +44,7 @@ type IndexOptions struct {
 	Blocksize int
 	Delimiter []byte
 	Header    bool
-	Logger    *zerolog.Logger // debug logger
+	Logger    *slog.Logger // debug logger
 }
 
 type IndexEntry struct {
@@ -71,8 +70,8 @@ type Index struct {
 	Length         int
 	List           []IndexEntry `json:"-"`
 	Version        int
-	HeaderFields   []string        `json:",omitempty"`
-	logger         *zerolog.Logger // debug logger
+	HeaderFields   []string     `json:",omitempty"`
+	logger         *slog.Logger // debug logger
 }
 
 // epoch returns the modtime for path in epoch/unix format
@@ -175,12 +174,11 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 		elt := bytes.SplitN(line, index.Delimiter, 2)
 		key := elt[0]
 		if index.logger != nil {
-			index.logger.Debug().
-				Int64("blockNumber", blockNumber).
-				Int64("blockPosition", blockPosition).
-				Bytes("prevKey", prevKey).
-				Bytes("key", key).
-				Msg("generateLineIndex loop")
+			index.logger.Debug("generateLineIndex loop",
+				"blockNumber", blockNumber,
+				"blockPosition", blockPosition,
+				"prevKey", string(prevKey),
+				"key", string(key))
 		}
 
 		// Check key ordering

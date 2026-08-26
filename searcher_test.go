@@ -5,8 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	//"github.com/rs/zerolog"
-	//"github.com/rs/zerolog/log"
+	//"log/slog"
+	//"os"
+
+	//"github.com/lmittmann/tint"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -100,9 +102,7 @@ func TestSearcherLine3(t *testing.T) {
 	ensureIndex(t, "domains2.csv")
 	o := SearcherOptions{Header: true}
 	/*
-		zerolog.SetGlobalLevel(zerolog.TraceLevel)
-		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-		o.Logger = &log.Logger
+		o.Logger = slog.New(tint.NewHandler(os.Stderr, &tint.Options{Level: slog.LevelDebug}))
 	*/
 	s, err := NewSearcherOptions("testdata/domains2.csv", o)
 	if err != nil {
@@ -134,9 +134,7 @@ func TestSearcherLineFoo(t *testing.T) {
 	ensureIndex(t, "foo.csv")
 	o := SearcherOptions{Header: true}
 	/*
-		zerolog.SetGlobalLevel(zerolog.TraceLevel)
-		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-		o.Logger = &log.Logger
+		o.Logger = slog.New(tint.NewHandler(os.Stderr, &tint.Options{Level: slog.LevelDebug}))
 	*/
 	s, err := NewSearcherOptions("testdata/foo.csv", o)
 	if err != nil {
@@ -167,9 +165,7 @@ alstom.com,alstom.com,ULT
 	ensureIndex(t, "alstom1.csv")
 	o := SearcherOptions{Header: false}
 	/*
-		zerolog.SetGlobalLevel(zerolog.TraceLevel)
-		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-		o.Logger = &log.Logger
+		o.Logger = slog.New(tint.NewHandler(os.Stderr, &tint.Options{Level: slog.LevelDebug}))
 	*/
 	s, err := NewSearcherOptions("testdata/alstom1.csv", o)
 	if err != nil {
@@ -250,9 +246,7 @@ func TestSearcherLinesMultiBlock1(t *testing.T) {
 	ensureIndex(t, "alstom3.csv")
 	o := SearcherOptions{Header: true}
 	/*
-		zerolog.SetGlobalLevel(zerolog.TraceLevel)
-		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-		o.Logger = &log.Logger
+		o.Logger = slog.New(tint.NewHandler(os.Stderr, &tint.Options{Level: slog.LevelDebug}))
 	*/
 	s, err := NewSearcherOptions("testdata/alstom3.csv", o)
 	if err != nil {

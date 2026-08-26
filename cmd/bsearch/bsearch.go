@@ -10,10 +10,11 @@ import (
 	"regexp"
 	"strings"
 
+	"log/slog"
+
 	"github.com/ProfoundNetworks/bsearch"
 	flags "github.com/jessevdk/go-flags"
-	"github.com/rs/zerolog"
-	log "github.com/rs/zerolog/log"
+	"github.com/lmittmann/tint"
 )
 
 // Options
@@ -58,16 +59,7 @@ func main() {
 	}
 
 	// Setup
-	switch len(opts.Verbose) {
-	case 0:
-		zerolog.SetGlobalLevel(zerolog.WarnLevel)
-	case 1:
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	case 2:
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	default:
-		zerolog.SetGlobalLevel(zerolog.TraceLevel)
-	}
+	setupLogging(len(opts.Verbose))
 
 	// Die if Filename looks compressed
 	re := regexp.MustCompile(`\.(gz|bz2|br)$`)
@@ -79,8 +71,7 @@ func main() {
 	// Instantiate searcher
 	o := bsearch.SearcherOptions{Header: opts.Header}
 	if len(opts.Verbose) > 0 {
-		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-		o.Logger = &log.Logger
+		o.Logger = slog.Default()
 	}
 	bss, err := bsearch.NewSearcherOptions(opts.Args.Filename, o)
 	if err != nil {
@@ -91,9 +82,7 @@ func main() {
 		if err != nil {
 			die(err.Error())
 		}
-		log.Info().
-			Str("path", idxpath).
-			Msg("using index")
+		slog.Info("using index", "path", idxpath)
 	}
 
 	if opts.Stdin {
@@ -169,4 +158,22 @@ func reverse(s string) string {
 		r[i], r[j] = r[j], r[i]
 	}
 	return string(r)
+}
+
+// setupLogging configures the default slog logger to write human-readable
+// output to stderr, with the level set from the number of -v flags given.
+func setupLogging(verbosity int) {
+	level := slog.LevelWarn
+	switch verbosity {
+	case 0:
+		level = slog.LevelWarn
+	case 1:
+		level = slog.LevelInfo
+	default:
+		level = slog.LevelDebug
+	}
+	slog.SetDefault(slog.New(tint.NewHandler(os.Stderr, &tint.Options{
+		Level:      level,
+		TimeFormat: "15:04:05.000",
+	})))
 }
