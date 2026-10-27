@@ -39,7 +39,7 @@ task :selftest => :build do
   dupkey.each do |ds|
     puts heading(ds)
     sh "bin/bsearch_index #{ds}", :verbose => false
-    sh "time -f 'Elapsed: %E' cat #{ds} | bin/bsearch_selftest --hdr -i #{ds} | ctap -gsf", :verbose => false
+    sh "time -f 'Elapsed: %E' cat #{ds} | bin/bsearch_selftest --hdr -i #{ds}", :verbose => false
     puts
   end
 
@@ -49,7 +49,7 @@ task :selftest => :build do
     ds = rand.sub('_r1.', '.')
     puts heading(ds)
     sh "bin/bsearch_index #{ds}", :verbose => false
-    sh "time -f 'Elapsed: %E' pv -l #{rand} | bin/bsearch_selftest --hdr -i #{ds} | ctap -gsf", :verbose => false
+    sh "time -f 'Elapsed: %E' pv -l #{rand} | bin/bsearch_selftest --hdr -i #{ds}", :verbose => false
     puts
   end
 end

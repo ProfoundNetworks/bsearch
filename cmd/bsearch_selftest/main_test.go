@@ -165,7 +165,7 @@ func TestSelftestLongLine(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d, stderr: %s", code, stderr)
 	}
-	expect := "ok 1 a\nok 2 b\nok 3 c\n"
+	expect := expectOK(3)
 	if stdout != expect {
 		t.Errorf("got:\n%s\nexpected:\n%s", stdout, expect)
 	}
@@ -201,19 +201,9 @@ func readTestdata(t *testing.T, name string) []byte {
 	return data
 }
 
-// expectTAP returns the all-ok TAP output for lines, numbered from 1. With
-// keyOnly, each test is named by the line's key (the unique-keys path);
-// otherwise by the whole line (the duplicate-keys batch path).
-func expectTAP(lines []string, sep string, keyOnly bool) string {
-	var b strings.Builder
-	for i, line := range lines {
-		name := line
-		if keyOnly {
-			name, _, _ = strings.Cut(line, sep)
-		}
-		fmt.Fprintf(&b, "ok %d %s\n", i+1, name)
-	}
-	return b.String()
+// expectOK returns the output for n rows that all pass: just the summary
+func expectOK(n int) string {
+	return fmt.Sprintf("rows checked: %d, all ok\n", n)
 }
 
 // dataLines splits data into lines, dropping the final newline
@@ -225,9 +215,15 @@ func dataLines(data []byte) []string {
 // empty stderr and the expected stdout
 func checkRun(t *testing.T, stdin io.Reader, expect string, args ...string) {
 	t.Helper()
+	checkRunStatus(t, stdin, 0, expect, args...)
+}
+
+// checkRunStatus is checkRun with an explicit expected exit status
+func checkRunStatus(t *testing.T, stdin io.Reader, status int, expect string, args ...string) {
+	t.Helper()
 	stdout, stderr, code := runBinStdin(t, stdin, bsearchSelftestBin, args...)
-	if code != 0 {
-		t.Errorf("%q: expected exit 0, got %d", args, code)
+	if code != status {
+		t.Errorf("%q: expected exit %d, got %d", args, status, code)
 	}
 	if stderr != "" {
 		t.Errorf("%q: expected empty stderr, got %q", args, stderr)
@@ -262,7 +258,7 @@ func TestSelftestUnique(t *testing.T) {
 	if !idx.KeysUnique {
 		t.Fatal("expected domains1.csv to have unique keys")
 	}
-	checkRun(t, nil, expectTAP(dataLines(data), ",", true), path)
+	checkRun(t, nil, expectOK(len(dataLines(data))), path)
 }
 
 // Test a duplicate-keys dataset, which goes through processBatch
@@ -272,12 +268,7 @@ func TestSelftestDuplicates(t *testing.T) {
 	if idx.KeysUnique {
 		t.Fatal("expected rdns1.csv to have duplicate keys")
 	}
-	expect := expectTAP(dataLines(data), ",", false)
-	// Spot-check the 032.176.184.000 batch of 6 lines is all there
-	if !strings.Contains(expect, "\nok 289 032.176.184.000,mobile005.mycingular.net,") {
-		t.Fatal("expectTAP did not number the duplicate batch as expected")
-	}
-	checkRun(t, nil, expect, path)
+	checkRun(t, nil, expectOK(len(dataLines(data))), path)
 }
 
 // Test -H/--hdr skips the header line, on both the unique and duplicate paths
@@ -294,8 +285,8 @@ func TestSelftestHeader(t *testing.T) {
 	}
 
 	for _, flag := range []string{"-H", "--hdr"} {
-		checkRun(t, nil, expectTAP(dataLines(uniq), ",", true), flag, uniqPath)
-		checkRun(t, nil, expectTAP(dataLines(dup)[1:], ",", false), flag, dupPath)
+		checkRun(t, nil, expectOK(len(dataLines(uniq))), flag, uniqPath)
+		checkRun(t, nil, expectOK(len(dataLines(dup))-1), flag, dupPath)
 	}
 }
 
@@ -308,7 +299,7 @@ func TestSelftestStdin(t *testing.T) {
 
 	for _, flag := range []string{"-i", "--stdin"} {
 		stdin := strings.NewReader(strings.Join(subset, "\n") + "\n")
-		checkRun(t, stdin, expectTAP(subset, ",", true), flag, path)
+		checkRun(t, stdin, expectOK(len(subset)), flag, path)
 	}
 }
 
@@ -316,10 +307,10 @@ func TestSelftestStdin(t *testing.T) {
 func TestSelftestPSV(t *testing.T) {
 	data := bytes.ReplaceAll(readTestdata(t, "domains1.csv"), []byte(","), []byte("|"))
 	path, _ := indexedTemp(t, "domains1.psv", data)
-	checkRun(t, nil, expectTAP(dataLines(data), "|", true), path)
+	checkRun(t, nil, expectOK(len(dataLines(data))), path)
 }
 
-// Test not ok results for lines that don't match the dataset
+// Test failures for lines that don't match the dataset
 func TestSelftestNotOK(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -329,20 +320,20 @@ func TestSelftestNotOK(t *testing.T) {
 	}{
 		// Unique keys: processLine reports a missing key, or the line found
 		{"unique", "domains1.csv", "aaa.com,1\nadweek.com,999\nzend.com,588\n",
-			"not ok 1 aaa.com\n# key not found\n" +
-				"not ok 2 adweek.com\n# got \"adweek.com,305\", expected \"adweek.com,999\"\n" +
-				"ok 3 zend.com\n"},
+			"row 1: aaa.com: key not found\n" +
+				"row 2: adweek.com: got \"adweek.com,305\", expected \"adweek.com,999\"\n" +
+				"rows checked: 3, failed: 2\n"},
 		// Duplicate keys: processBatch reports each input line that isn't
 		// among the dataset's lines for its key
 		{"batch", "rdns1.csv", "001.000.128.000,wrong\n",
-			"not ok 1 001.000.128.000,wrong\n" +
-				"# line not found for key \"001.000.128.000\"\n"},
+			"row 1: 001.000.128.000,wrong: line not found for key \"001.000.128.000\"\n" +
+				"rows checked: 1, failed: 1\n"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			path, _ := indexedTemp(t, tc.dataset, readTestdata(t, tc.dataset))
-			// TAP failures are reported on stdout; the exit status stays 0
-			checkRun(t, strings.NewReader(tc.stdin), tc.expect, "-i", path)
+			// Failures are reported on stdout, with exit status 1
+			checkRunStatus(t, strings.NewReader(tc.stdin), 1, tc.expect, "-i", path)
 		})
 	}
 }
@@ -356,19 +347,22 @@ func TestSelftestBatchNotFound(t *testing.T) {
 	tests := []struct {
 		name   string
 		stdin  string
-		expect string // a not ok line expected in stdout
+		expect string // a failure line expected in stdout
 	}{
 		{"missing key", "999.000.000.000,x\n",
-			"not ok 1 999.000.000.000,x\n# key not found"},
+			"row 1: 999.000.000.000,x: key not found"},
 		{"extra line", dupLines + "032.176.184.000,zzz\n",
-			"not ok 7 032.176.184.000,zzz\n# line not found for key \"032.176.184.000\""},
+			"row 7: 032.176.184.000,zzz: line not found for key \"032.176.184.000\""},
 	}
 	data := readTestdata(t, "rdns1.csv")
 	path, _ := indexedTemp(t, "rdns1.csv", data)
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			stdout, stderr, _ := runBinStdin(t, strings.NewReader(tc.stdin),
+			stdout, stderr, code := runBinStdin(t, strings.NewReader(tc.stdin),
 				bsearchSelftestBin, "-i", path)
+			if code != 1 {
+				t.Errorf("expected exit 1, got %d", code)
+			}
 			if stderr != "" {
 				t.Errorf("expected empty stderr, got %q", stderr)
 			}
@@ -401,28 +395,28 @@ func TestSelftestAutoHeader(t *testing.T) {
 	// Headers the indexer auto-detected (they sort after the first key)
 	uniq := readTestdata(t, "domains1.csv")
 	uniqPath, _ := indexedTemp(t, "domains1.csv", append([]byte("domain,count\n"), uniq...))
-	checkRun(t, nil, expectTAP(dataLines(uniq), ",", true), uniqPath)
+	checkRun(t, nil, expectOK(len(dataLines(uniq))), uniqPath)
 	dup := readTestdata(t, "foo.csv")
 	dupPath, _ := indexedTemp(t, "foo.csv", dup)
-	checkRun(t, nil, expectTAP(dataLines(dup)[1:], ",", false), dupPath)
+	checkRun(t, nil, expectOK(len(dataLines(dup))-1), dupPath)
 
 	// A header that sorts first, so was only known via IndexOptions.Header
 	path := indexedTempOpts(t, "data.csv", []byte("aaa,hdr\nb,1\nc,2\n"),
 		bsearch.IndexOptions{Header: true})
-	checkRun(t, nil, "ok 1 b\nok 2 c\n", path)
+	checkRun(t, nil, expectOK(2), path)
 
 	// Stdin input may be a sample, so its first line is never assumed to
 	// be the header without --hdr
-	checkRun(t, strings.NewReader("b,1\n"), "ok 1 b\n", "-i", path)
+	checkRun(t, strings.NewReader("b,1\n"), expectOK(1), "-i", path)
 }
 
 // Test datasets whose lines are just keys, with no separator
 func TestSelftestSingleColumn(t *testing.T) {
 	path, _ := indexedTemp(t, "uniq.csv", []byte("ac.0-0\nac.0-0.www\nac.0001de\n"))
-	checkRun(t, nil, "ok 1 ac.0-0\nok 2 ac.0-0.www\nok 3 ac.0001de\n", path)
+	checkRun(t, nil, expectOK(3), path)
 
 	path, _ = indexedTemp(t, "dups.csv", []byte("aa\naa\nbb\n"))
-	checkRun(t, nil, "ok 1 aa\nok 2 aa\nok 3 bb\n", path)
+	checkRun(t, nil, expectOK(3), path)
 }
 
 // Test that without -t the separator comes from the index, not the
@@ -430,7 +424,7 @@ func TestSelftestSingleColumn(t *testing.T) {
 func TestSelftestIndexDelimiter(t *testing.T) {
 	path := indexedTempOpts(t, "data.txt", []byte("aa,1\nbb,2\n"),
 		bsearch.IndexOptions{Delimiter: []byte(",")})
-	checkRun(t, nil, "ok 1 aa\nok 2 bb\n", path)
+	checkRun(t, nil, expectOK(2), path)
 }
 
 // Test selftest's error exits, which report on stderr with status 1
@@ -475,7 +469,7 @@ func TestSelftestVerbose(t *testing.T) {
 	path, _ := indexedTemp(t, "data.psv", []byte("a|1\nb|2\n"))
 	for _, flag := range []string{"-v", "-vv"} {
 		stdout, stderr, code := runBin(t, bsearchSelftestBin, flag, path)
-		if code != 0 || stdout != "ok 1 a\nok 2 b\n" {
+		if code != 0 || stdout != expectOK(2) {
 			t.Errorf("%s: got exit %d, stdout %q", flag, code, stdout)
 		}
 		if !strings.Contains(stderr, "sep=|") {

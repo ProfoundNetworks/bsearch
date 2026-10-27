@@ -1,5 +1,7 @@
 /*
-bsearch_selftest is a utility
+bsearch_selftest checks that every line of a dataset (or of test data on
+stdin) can be found in it by key. It reports each row that can't be found,
+then a summary, and exits 1 if any row failed.
 */
 
 package main
@@ -62,37 +64,40 @@ func die(msg string) {
 	os.Exit(1)
 }
 
-func tap(rownum int, status, key, diag string) {
-	fmt.Printf("%s %d %s\n", status, rownum, key)
-	if diag != "" {
-		fmt.Println(diag)
-	}
+// results counts the rows checked and reports each failure on stdout
+type results struct {
+	checked int
+	failed  int
 }
 
-func processLine(bss *bsearch.Searcher, key, line string, rownum int) {
-	status := "ok"
-	diag := ""
+func (r *results) pass() {
+	r.checked++
+}
 
+func (r *results) fail(rownum int, name, reason string) {
+	r.checked++
+	r.failed++
+	fmt.Printf("row %d: %s: %s\n", rownum, name, reason)
+}
+
+func processLine(bss *bsearch.Searcher, res *results, key, line string, rownum int) {
 	// Lookup the line for key
 	got, err := bss.Line([]byte(key))
 	if err != nil {
-		status = "not ok"
-		diag = "# " + err.Error()
+		res.fail(rownum, key, err.Error())
 	} else if string(got) != line {
-		status = "not ok"
-		diag = fmt.Sprintf("# got %q, expected %q", got, line)
+		res.fail(rownum, key, fmt.Sprintf("got %q, expected %q", got, line))
+	} else {
+		res.pass()
 	}
-
-	tap(rownum, status, key, diag)
 }
 
-func processBatch(bss *bsearch.Searcher, key string, batch []string, rownum int) {
+func processBatch(bss *bsearch.Searcher, res *results, key string, batch []string, rownum int) {
 	// Lookup all lines for key
 	lines, err := bss.Lines([]byte(key))
 	if err != nil {
-		diag := "# " + err.Error()
 		for i, line := range batch {
-			tap(rownum+i, "not ok", line, diag)
+			res.fail(rownum+i, line, err.Error())
 		}
 		return
 	}
@@ -103,13 +108,11 @@ func processBatch(bss *bsearch.Searcher, key string, batch []string, rownum int)
 		found[string(line)] = true
 	}
 	for i, line := range batch {
-		status := "ok"
-		diag := ""
 		if !found[line] {
-			status = "not ok"
-			diag = fmt.Sprintf("# line not found for key %q", key)
+			res.fail(rownum+i, line, fmt.Sprintf("line not found for key %q", key))
+		} else {
+			res.pass()
 		}
-		tap(rownum+i, status, line, diag)
 	}
 }
 
@@ -158,6 +161,7 @@ func main() {
 	scanner.Buffer(make([]byte, 64*1024), maxLineLength)
 
 	// Process
+	var res results
 	rownum := 1
 	prevKey := ""
 	batch := []string{}
@@ -177,7 +181,7 @@ func main() {
 
 		// keysUnique processing - individual lines
 		if keysUnique {
-			processLine(bss, key, line, rownum)
+			processLine(bss, &res, key, line, rownum)
 			rownum += 1
 			continue
 		}
@@ -192,7 +196,7 @@ func main() {
 		} else {
 			// Break - process batch and reset
 			if len(batch) > 0 {
-				processBatch(bss, prevKey, batch, rownum)
+				processBatch(bss, &res, prevKey, batch, rownum)
 			}
 			prevKey = key
 			rownum += len(batch)
@@ -203,8 +207,15 @@ func main() {
 		die(err.Error())
 	}
 	if len(batch) > 0 {
-		processBatch(bss, prevKey, batch, rownum)
+		processBatch(bss, &res, prevKey, batch, rownum)
 	}
+
+	// Summarise, exiting 1 if any row failed
+	if res.failed > 0 {
+		fmt.Printf("rows checked: %d, failed: %d\n", res.checked, res.failed)
+		os.Exit(1)
+	}
+	fmt.Printf("rows checked: %d, all ok\n", res.checked)
 }
 
 // setupLogging configures the default slog logger to write human-readable

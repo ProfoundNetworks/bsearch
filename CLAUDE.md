@@ -113,8 +113,9 @@ The `main_test.go` in each tool checks both streams separately.
     results.
   - `-r/--rev` reverses both the key and the output, for reverse-domain
     datasets.
-- `bsearch_selftest` verifies every line of a dataset can be found and prints
-  TAP output.
+- `bsearch_selftest` verifies every line of a dataset can be found. It
+  prints a `row N: ...` line for each failure, then a summary line, and
+  exits 1 if any row failed.
 
 ## Testdata quirks
 
