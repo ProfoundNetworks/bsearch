@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 	//"log/slog"
 	//"os"
 	//"github.com/lmittmann/tint"
@@ -526,5 +527,180 @@ func TestSearcherClosed(t *testing.T) {
 	}
 	if _, err := s.LinesN(key, 2); err != ErrClosed {
 		t.Errorf("LinesN: got %v, expected ErrClosed", err)
+	}
+}
+
+// Test that NewSearcher rejects missing paths, directories, and datasets
+// without a current index
+func TestNewSearcherErrors(t *testing.T) {
+	dir := t.TempDir()
+
+	missing := filepath.Join(dir, "missing.csv")
+
+	subdir := filepath.Join(dir, "subdir.csv")
+	if err := os.Mkdir(subdir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	noindex := filepath.Join(dir, "noindex.csv")
+	if err := os.WriteFile(noindex, []byte("a,1\nb,2\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	expired := indexedData(t, "expired.csv", "a,1\nb,2\n", IndexOptions{})
+	idxpath, err := IndexPath(expired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stat, err := os.Stat(idxpath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	later := stat.ModTime().Add(2 * time.Second)
+	if err := os.Chtimes(expired, later, later); err != nil {
+		t.Fatal(err)
+	}
+
+	var tests = []struct {
+		name   string
+		path   string
+		expect error
+	}{
+		{"missing", missing, ErrFileNotFound},
+		{"directory", subdir, ErrNotFile},
+		{"no index", noindex, ErrIndexNotFound},
+		{"expired index", expired, ErrIndexExpired},
+	}
+
+	for _, tc := range tests {
+		s, err := NewSearcher(tc.path)
+		if err != tc.expect {
+			if s != nil {
+				s.Close()
+			}
+			t.Errorf("%s: got %v, expected %v", tc.name, err, tc.expect)
+		}
+	}
+}
+
+// Test Searcher.Line() on keys at and beyond the ends of a dataset,
+// with and without a trailing newline, in one block or many
+func TestSearcherLineEdges(t *testing.T) {
+	long := strings.Repeat("x", 100)
+	var tests = []struct {
+		key    string
+		expect string // "" means ErrNotFound
+	}{
+		{"b", "b,1"},       // first key
+		{"f", "f,5"},       // last key
+		{"d", "d,3"},       // middle key
+		{"a", ""},          // before the first key
+		{"", ""},           // empty key
+		{"g", ""},          // after the last key
+		{"ff", ""},         // after the last key, extending it
+		{"b" + long, ""},   // longer than any line, inside the key range
+		{"z" + long, ""},   // longer than any line, after the last key
+		{"f,5" + long, ""}, // longer than any line, extending the last
+	}
+
+	for _, data := range []string{"b,1\nc,2\nd,3\ne,4\nf,5\n", "b,1\nc,2\nd,3\ne,4\nf,5"} {
+		for _, blocksize := range []int{0, 4} { // 0 means the default (2048)
+			path := indexedData(t, "data.csv", data, IndexOptions{Blocksize: blocksize})
+			s, err := NewSearcher(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if blocksize == 4 && len(s.Index.List) != 5 {
+				t.Errorf("blocksize 4: got %d index entries, expected 5", len(s.Index.List))
+			}
+			trailing := strings.HasSuffix(data, "\n")
+
+			for _, tc := range tests {
+				line, err := s.Line([]byte(tc.key))
+				if tc.expect == "" {
+					if err != ErrNotFound {
+						t.Errorf("newline %v, blocksize %d, %q: got %q, %v, expected ErrNotFound",
+							trailing, blocksize, tc.key, line, err)
+					}
+					continue
+				}
+				if err != nil {
+					t.Errorf("newline %v, blocksize %d, %q: got error %v",
+						trailing, blocksize, tc.key, err)
+					continue
+				}
+				if string(line) != tc.expect {
+					t.Errorf("newline %v, blocksize %d, %q: got %q, expected %q",
+						trailing, blocksize, tc.key, line, tc.expect)
+				}
+			}
+			s.Close()
+		}
+	}
+}
+
+// Test that a key-only line doesn't hide a following line whose key
+// extends it with a byte that sorts below '\n' (e.g. a tab in a CSV key)
+func TestSearcherLineKeyBelowNewline(t *testing.T) {
+	t.Skip("BUG: scanLinesWithKey compares len(key) bytes from each line, " +
+		"running past the end of a shorter key-only line into the next one; " +
+		"'\\n' then compares greater than the key's '\\t' and the scan stops early")
+
+	path := indexedData(t, "data.csv", "a\na\tb,1\n", IndexOptions{})
+	s, err := NewSearcher(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	key := "a\tb"
+	line, err := s.Line([]byte(key))
+	if err != nil || string(line) != "a\tb,1" {
+		t.Errorf("%q: got %q, %v, expected %q", key, line, err, "a\tb,1")
+	}
+}
+
+// lineNoPanic calls s.Line(key), converting a panic into an error
+func lineNoPanic(s *Searcher, key []byte) (line []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic: %v", r)
+		}
+	}()
+	return s.Line(key)
+}
+
+// Test that a corrupt index that LoadIndex parses gives an error, either
+// from NewSearcher or from the lookup, rather than a panic
+func TestSearcherCorruptIndex(t *testing.T) {
+	t.Skip("BUG: LoadIndex accepts an index with no entries or with offsets " +
+		"beyond the dataset, and Line then panics indexing Index.List or " +
+		"slicing the mmap")
+
+	var tests = []struct {
+		name   string
+		length int
+		body   string
+	}{
+		{"no entries", 0, ""},
+		{"offset past end of dataset", 1, "1000\t\"a\"\n"},
+	}
+
+	for _, tc := range tests {
+		path := indexedData(t, "data.csv", "a,1\nb,2\n", IndexOptions{})
+		header, _ := readIndex(t, path)
+		header["Length"] = tc.length
+		writeIndex(t, path, header, tc.body)
+
+		s, err := NewSearcher(path)
+		if err != nil {
+			continue
+		}
+		_, err = lineNoPanic(s, []byte("b"))
+		if err == nil || strings.HasPrefix(err.Error(), "panic: ") {
+			t.Errorf("%s: got error %v from Line, expected an error and no panic",
+				tc.name, err)
+		}
+		s.Close()
 	}
 }

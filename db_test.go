@@ -174,3 +174,92 @@ func TestDBClosed(t *testing.T) {
 		t.Errorf("GetSlice: got %v, expected ErrClosed", err)
 	}
 }
+
+// Test DB.GetSlice() field splitting, missing keys, and multi-character
+// delimiters
+func TestDBGetSliceFields(t *testing.T) {
+	var tests = []struct {
+		key    string
+		expect []string // nil means ErrNotFound
+	}{
+		{"a", []string{"1", "2", "3"}},
+		{"b", []string{"x,y", "z"}}, // quoted field containing the delimiter
+		{"c", []string{"", "2"}},    // empty first field
+		{"aa", nil},                 // missing, inside the key range
+		{"0", nil},                  // missing, before the first key
+		{"d", nil},                  // missing, after the last key
+	}
+
+	path := indexedData(t, "data.csv", "a,1,2,3\nb,\"x,y\",z\nc,,2\n", IndexOptions{})
+	db, err := NewDB(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	for _, tc := range tests {
+		s, err := db.GetSlice(tc.key)
+		if tc.expect == nil {
+			if err != ErrNotFound {
+				t.Errorf("%q: got %q, %v, expected ErrNotFound", tc.key, s, err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("%q: got error %v", tc.key, err)
+			continue
+		}
+		if diff := cmp.Diff(tc.expect, s); diff != "" {
+			t.Errorf("%q mismatch (-want +got):\n%s", tc.key, diff)
+		}
+	}
+
+	// A multi-character delimiter works for Get, but not GetSlice
+	path = indexedData(t, "data.txt", "a::x::y\nb::1\n", IndexOptions{Delimiter: []byte("::")})
+	db2, err := NewDB(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db2.Close()
+
+	if val, err := db2.GetString("a"); err != nil || val != "x::y" {
+		t.Errorf("multi-character Get: got %q, %v, expected %q", val, err, "x::y")
+	}
+	s, err := db2.GetSlice("a")
+	expect := `cannot convert multi-character delimiter "::" to rune`
+	if err == nil || err.Error() != expect {
+		t.Errorf("multi-character GetSlice: got %q, %v, expected error %q", s, err, expect)
+	}
+}
+
+// Test DB.GetSlice() on lines with an empty value
+func TestDBGetSliceEmptyValue(t *testing.T) {
+	t.Skip("BUG: GetSlice returns io.EOF from csv.Reader.Read when the " +
+		"value is empty, although the key exists and Get returns no error")
+
+	var tests = []struct {
+		key    string
+		expect []string
+	}{
+		{"a", []string{""}}, // key and delimiter, empty value
+		{"b", []string{}},   // key only, no delimiter
+	}
+
+	path := indexedData(t, "data.csv", "a,\nb\nc,1\n", IndexOptions{})
+	db, err := NewDB(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	for _, tc := range tests {
+		s, err := db.GetSlice(tc.key)
+		if err != nil {
+			t.Errorf("%q: got error %v", tc.key, err)
+			continue
+		}
+		if diff := cmp.Diff(tc.expect, s); diff != "" {
+			t.Errorf("%q mismatch (-want +got):\n%s", tc.key, diff)
+		}
+	}
+}
