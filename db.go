@@ -38,6 +38,11 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 		return nil, err
 	}
 
+	// A line consisting only of key has an empty value
+	if bytes.Equal(line, key) {
+		return []byte{}, nil
+	}
+
 	// Remove leading key+delimiter from line
 	prefix := append(key, db.bss.Index.Delimiter...)
 	// Sanity check

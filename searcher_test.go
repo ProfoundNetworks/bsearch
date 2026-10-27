@@ -45,6 +45,46 @@ func TestSearcherLine1(t *testing.T) {
 	}
 }
 
+// Test Searcher.Line() using testdata/single_column.csv, where each line
+// is just a key with no delimiter (and the last line has no newline)
+func TestSearcherLineSingleColumn(t *testing.T) {
+	var tests = []struct {
+		key    string
+		expect string // "" means ErrNotFound
+	}{
+		{"ac.0-0", "ac.0-0"},
+		{"ac.0-0.www", "ac.0-0.www"},
+		{"ac.0001de", "ac.0001de"},
+		{"ac.0001de.liam", "ac.0001de.liam"}, // final unterminated line
+		{"ac.0-", ""},                        // partial keys don't match
+		{"ac.0001", ""},
+	}
+
+	ensureIndex(t, "single_column.csv")
+	s, err := NewSearcher("testdata/single_column.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	for _, tc := range tests {
+		line, err := s.Line([]byte(tc.key))
+		if tc.expect == "" {
+			if err != ErrNotFound {
+				t.Errorf("%q => %q, %v\n   expected ErrNotFound\n", tc.key, line, err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("%q: %s\n", tc.key, err.Error())
+			continue
+		}
+		if string(line) != tc.expect {
+			t.Errorf("%q => %q\n   expected %q\n", tc.key, line, tc.expect)
+		}
+	}
+}
+
 // Test Searcher.Line() using testdata/domains1.csv (no header)
 func TestSearcherLine2(t *testing.T) {
 	var tests = []struct {

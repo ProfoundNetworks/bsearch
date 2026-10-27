@@ -46,7 +46,8 @@ The root package has three layers:
   (`blockEntryLE` if `KeysIndexFirst`, else the more conservative
   `blockEntryLT`), then scans forward linearly from that block offset in the
   mmap (`scanLinesWithKey`). A match means the line starts with
-  `key + Delimiter`, so keys match as whole fields, not raw prefixes. `LinesN`
+  `key + Delimiter`, or consists only of the key (for single-column files),
+  so keys match as whole fields, not raw prefixes. `LinesN`
   caps results to 1 when keys are unique.
 - **`db.go`: `DB`.** A thin key-value wrapper over `Searcher.Line` that strips
   the `key+delimiter` prefix (`Get`, `GetString`, and `GetSlice` via

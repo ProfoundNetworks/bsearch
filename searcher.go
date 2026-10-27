@@ -164,8 +164,8 @@ func (s *Searcher) scanLinesWithKey(buf, key []byte, n int) [][]byte {
 		offset += nlidx + 1
 	}
 
-	// Collate up to n lines beginning with keyde
-	for offset < len(buf) && bytes.HasPrefix(buf[offset:], keyde) {
+	// Collate up to n lines beginning with key as a whole field
+	for offset < len(buf) && hasKey(buf[offset:], key, keyde) {
 		nlidx := bytes.IndexByte(buf[offset:], '\n')
 		if nlidx == -1 {
 			// If no newline found, read to end of buf
@@ -179,6 +179,17 @@ func (s *Searcher) scanLinesWithKey(buf, key []byte, n int) [][]byte {
 	}
 
 	return lines
+}
+
+// hasKey reports whether buf begins with key as a whole field i.e. key
+// followed by the delimiter (keyde), a newline, or the end of buf (the
+// latter two for lines that consist only of a key)
+func hasKey(buf, key, keyde []byte) bool {
+	if bytes.HasPrefix(buf, keyde) {
+		return true
+	}
+	return bytes.HasPrefix(buf, key) &&
+		(len(buf) == len(key) || buf[len(key)] == '\n')
 }
 
 // scanIndexedLines returns the first n lines from reader that begin with key.

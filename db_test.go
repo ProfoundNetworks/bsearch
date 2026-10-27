@@ -133,3 +133,25 @@ func TestDBGetSlice(t *testing.T) {
 			key, err, strings.Join(s, ","))
 	}
 }
+
+// Test DB.Get() on testdata/single_column.csv, where lines have a key
+// but no value
+func TestDBGetSingleColumn(t *testing.T) {
+	ensureIndex(t, "single_column.csv")
+	db, err := NewDB("testdata/single_column.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	for _, key := range []string{"ac.0-0", "ac.0001de.liam"} {
+		val, err := db.Get([]byte(key))
+		if err != nil {
+			t.Errorf("%s: %s\n", key, err.Error())
+			continue
+		}
+		if len(val) != 0 {
+			t.Errorf("%q => %q\n   expected empty value\n", key, val)
+		}
+	}
+}
