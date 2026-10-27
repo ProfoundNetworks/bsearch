@@ -12,7 +12,9 @@ end
 
 desc "Run selftests (slow)"
 task :selftest do
-  # For dup-key datasets we can't run randomised inputs
+  # Dup-key datasets are tested on their full, sorted contents: selftest's
+  # dup-key path groups consecutive input lines by key, so it needs sorted
+  # input and can't take the shuffled _r1 files (a sorted sample would do)
   dupkey = [ "data/foo.csv" ]
   dupkey.each do |ds|
     puts ds.colorize(name_colour).bold
@@ -20,7 +22,8 @@ task :selftest do
     puts
   end
 
-  # For uniq-key datasets we run randomised inputs instead
+  # Uniq-key datasets check each line independently, so we can test them
+  # with shuffled _r1 inputs instead
   FileList['data/*_r1.[cpt]sv'].each do |rand|
     ds = rand.sub('_r1.', '.')
     puts ds.colorize(name_colour).bold
