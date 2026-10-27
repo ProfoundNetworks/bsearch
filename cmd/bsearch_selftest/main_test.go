@@ -433,6 +433,43 @@ func TestSelftestIndexDelimiter(t *testing.T) {
 	checkRun(t, nil, "ok 1 aa\nok 2 bb\n", path)
 }
 
+// Test selftest's error exits, which report on stderr with status 1
+func TestSelftestErrors(t *testing.T) {
+	dir := t.TempDir()
+	noindex := filepath.Join(dir, "noindex.csv")
+	if err := os.WriteFile(noindex, []byte("a,1\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	dup, _ := indexedTemp(t, "rdns1.csv", readTestdata(t, "rdns1.csv"))
+
+	tests := []struct {
+		name   string
+		stdin  string
+		args   []string
+		stderr string // substring expected in stderr
+	}{
+		{"missing dataset", "", []string{filepath.Join(dir, "nosuch.csv")},
+			"no such file or directory"},
+		{"no index", "", []string{noindex}, "index file not found"},
+		{"unsorted dup-key input", "032.176.184.000,x\n032.176.184.000,y\n001.000.128.000,z\n",
+			[]string{"-i", dup},
+			`Unsorted input? Line 3 key "001.000.128.000" < "032.176.184.000"`},
+	}
+	for _, tc := range tests {
+		stdout, stderr, code := runBinStdin(t, strings.NewReader(tc.stdin),
+			bsearchSelftestBin, tc.args...)
+		if code != 1 {
+			t.Errorf("%s: expected exit 1, got %d", tc.name, code)
+		}
+		if stdout != "" {
+			t.Errorf("%s: expected empty stdout, got %q", tc.name, stdout)
+		}
+		if !strings.Contains(stderr, tc.stderr) {
+			t.Errorf("%s: expected stderr to contain %q, got %q", tc.name, tc.stderr, stderr)
+		}
+	}
+}
+
 // Test that -v logs the separator in use
 func TestSelftestVerbose(t *testing.T) {
 	path, _ := indexedTemp(t, "data.psv", []byte("a|1\nb|2\n"))

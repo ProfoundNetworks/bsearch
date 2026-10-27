@@ -186,7 +186,7 @@ func main() {
 		if key < prevKey {
 			// Keys must be in sorted order for dup keys processing
 			die(fmt.Sprintf("Unsorted input? Line %d key %q < %q",
-				rownum, key, prevKey))
+				rownum+len(batch), key, prevKey))
 		} else if key == prevKey {
 			batch = append(batch, line)
 		} else {
