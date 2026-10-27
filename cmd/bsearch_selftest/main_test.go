@@ -378,3 +378,57 @@ func TestSelftestBatchNotFound(t *testing.T) {
 		})
 	}
 }
+
+// indexedTempOpts is indexedTemp with explicit index options
+func indexedTempOpts(t *testing.T, name string, data []byte, opt bsearch.IndexOptions) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+	idx, err := bsearch.NewIndexOptions(path, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.Write(); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// Test that a header recorded in the index is skipped without --hdr
+func TestSelftestAutoHeader(t *testing.T) {
+	// Headers the indexer auto-detected (they sort after the first key)
+	uniq := readTestdata(t, "domains1.csv")
+	uniqPath, _ := indexedTemp(t, "domains1.csv", append([]byte("domain,count\n"), uniq...))
+	checkRun(t, nil, expectTAP(dataLines(uniq), ",", true), uniqPath)
+	dup := readTestdata(t, "foo.csv")
+	dupPath, _ := indexedTemp(t, "foo.csv", dup)
+	checkRun(t, nil, expectTAP(dataLines(dup)[1:], ",", false), dupPath)
+
+	// A header that sorts first, so was only known via IndexOptions.Header
+	path := indexedTempOpts(t, "data.csv", []byte("aaa,hdr\nb,1\nc,2\n"),
+		bsearch.IndexOptions{Header: true})
+	checkRun(t, nil, "ok 1 b\nok 2 c\n", path)
+
+	// Stdin input may be a sample, so its first line is never assumed to
+	// be the header without --hdr
+	checkRun(t, strings.NewReader("b,1\n"), "ok 1 b\n", "-i", path)
+}
+
+// Test datasets whose lines are just keys, with no separator
+func TestSelftestSingleColumn(t *testing.T) {
+	path, _ := indexedTemp(t, "uniq.csv", []byte("ac.0-0\nac.0-0.www\nac.0001de\n"))
+	checkRun(t, nil, "ok 1 ac.0-0\nok 2 ac.0-0.www\nok 3 ac.0001de\n", path)
+
+	path, _ = indexedTemp(t, "dups.csv", []byte("aa\naa\nbb\n"))
+	checkRun(t, nil, "ok 1 aa\nok 2 aa\nok 3 bb\n", path)
+}
+
+// Test that without -t the separator comes from the index, not the
+// filename (a .txt filename gives no separator at all)
+func TestSelftestIndexDelimiter(t *testing.T) {
+	path := indexedTempOpts(t, "data.txt", []byte("aa,1\nbb,2\n"),
+		bsearch.IndexOptions{Delimiter: []byte(",")})
+	checkRun(t, nil, "ok 1 aa\nok 2 bb\n", path)
+}

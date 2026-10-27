@@ -8,7 +8,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 
 	"log/slog"
@@ -60,24 +59,6 @@ func exitOnUsageError(code int) {
 func die(msg string) {
 	fmt.Fprintln(os.Stderr, msg)
 	os.Exit(1)
-}
-
-func defaultSep() {
-	if opts.Sep != "" {
-		return
-	}
-	reSuffix := regexp.MustCompile(`\.([cpt]sv)$`)
-	matches := reSuffix.FindStringSubmatch(opts.Args.CSVFile)
-	if matches != nil {
-		switch matches[1] {
-		case "psv":
-			opts.Sep = "|"
-		case "tsv":
-			opts.Sep = "\t"
-		default:
-			opts.Sep = ","
-		}
-	}
 }
 
 func tap(rownum int, status, key, diag string) {
@@ -156,13 +137,21 @@ func main() {
 			die(err.Error())
 		}
 	}
-	defaultSep()
-	slog.Info("", "sep", opts.Sep)
 	bss, err := bsearch.NewSearcher(opts.Args.CSVFile)
 	if err != nil {
 		die(err.Error())
 	}
 	defer bss.Close()
+
+	// Default to the index's delimiter, which is what searches use
+	if opts.Sep == "" {
+		opts.Sep = string(bss.Index.Delimiter)
+	}
+	slog.Info("", "sep", opts.Sep)
+
+	// Skip the header if the index records one, when reading the dataset
+	// itself (stdin input may be a sample, so there it needs --hdr)
+	skipHeader := opts.Header || (!opts.Stdin && bss.Index.Header)
 	keysUnique := bss.Index.KeysUnique
 	scanner := bufio.NewScanner(fh)
 	scanner.Buffer(make([]byte, 64*1024), maxLineLength)
@@ -174,20 +163,16 @@ func main() {
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		if opts.Header {
-			opts.Header = false
+		if skipHeader {
+			skipHeader = false
 			continue
 		}
 
 		// NB: this split *requires* that there are no escaped delimiters
 		// in the key. But that should always be the case on these kinds
 		// of datasets, since `sort(1)` won't sort them correctly otherwise.
-		splits := strings.SplitN(line, opts.Sep, 2)
-		if len(splits) != 2 {
-			die(fmt.Sprintf("Cannot split key+value on %q in line %d: %s\n",
-				opts.Sep, rownum, line))
-		}
-		key := splits[0]
+		// A line without a separator is all key (a single-column dataset).
+		key, _, _ := strings.Cut(line, opts.Sep)
 
 		// keysUnique processing - individual lines
 		if keysUnique {
