@@ -23,10 +23,15 @@ file into that directory and writes a fresh index next to it, so these tests
 never depend on the repo's `testdata/*.bsy` files.
 
 Other scripts: `gotest.sh` runs `go test` per package. `rake test` uses
-`richgo`. `rake selftest` runs `cmd/bsearch_selftest` against the large
-`data/` datasets, which are not in the repo. `benchmark_dgin.sh` pulls a
-dataset from S3. The GitHub workflow (`.github/workflows/test.yaml`) runs
-`go test -v ./...` and takes its Go version from `go.mod`.
+`richgo`. `rake build` (`scripts/build_all`) builds the binaries listed in
+`scripts/push.list` (`bsearch`, `bsearch_index`) into `bin/`. `rake push`
+(`scripts/push`) rsyncs them to `/opt/bsearch/bin` on the hosts given as
+`rake push[host1,host2]` or `PUSH_HOST`; there is no default host.
+`rake selftest` builds `bin/bsearch_selftest`, indexes each dataset, and
+runs the selftest against the large `data/` datasets, which are not in the
+repo. `benchmark_dgin.sh` pulls a dataset from S3. The GitHub workflow
+(`.github/workflows/test.yaml`) runs `go test -v ./...` and takes its Go
+version from `go.mod`.
 
 ## Architecture
 

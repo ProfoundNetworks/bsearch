@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Build every binary listed in scripts/push.list into bin/.
+# Lines starting with `#` and blank lines are ignored.
+
+set -euo pipefail
+
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." >/dev/null && pwd)"
+cd -- "$repo_root" >/dev/null
+
+push_file="scripts/push.list"
+if [[ ! -f "$push_file" ]]; then
+    echo "error: $push_file not found" >&2
+    exit 1
+fi
+
+while IFS= read -r name || [[ -n "$name" ]]; do
+    name="${name%%#*}"
+    name="${name#"${name%%[![:space:]]*}"}"
+    name="${name%"${name##*[![:space:]]}"}"
+    [[ -z "$name" ]] && continue
+
+    src="./cmd/$name"
+    if [[ ! -d "$src" ]]; then
+        echo "error: $src does not exist (referenced from $push_file)" >&2
+        exit 1
+    fi
+
+    echo "build $name"
+    go build -buildvcs=false -o "bin/$name" "$src"
+done < "$push_file"

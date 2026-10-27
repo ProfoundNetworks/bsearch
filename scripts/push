@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# Run from the repo's bin/ directory so the relative paths below
+# (push.list via ../scripts, .) resolve regardless of caller cwd. CDPATH=
+# prefix prevents a user-set CDPATH from redirecting cd to an unrelated dir
+# or printing the resolved path to stdout; -- guards against an exotic $0.
+CDPATH= cd -- "$(dirname -- "$0")/../bin" || exit 1
+
+# There is no default host: bsearch is a general-purpose tool used on many
+# machines, so the targets must be named. HOSTS (the last argument, or
+# PUSH_HOST) may list several hosts, separated by commas and/or spaces.
+if [ "$#" -ge 1 ]; then
+  HOSTS=${@: -1}
+  set -- "${@:1:$#-1}"
+else
+  HOSTS=${PUSH_HOST}
+fi
+HOSTS=${HOSTS//,/ }
+if [ -z "${HOSTS// /}" ]; then
+  echo "usage: $(basename -- "$0") [rsync-options...] HOST[,HOST...]  (or set PUSH_HOST)" >&2
+  exit 2
+fi
+
+DIR=${PUSH_DIR}
+if [ -z "$DIR" ]; then
+  DIR=$(basename $PWD)
+  if [ "$DIR" == bin ]; then
+    DIR=$(basename $(dirname $PWD))
+  fi
+fi
+
+STATUS=0
+for HOST in $HOSTS; do
+  echo "push $HOST"
+  rsync -clpt --progress --files-from=../scripts/push.list "$@" . root@$HOST:/opt/$DIR/bin || STATUS=1
+done
+exit $STATUS
