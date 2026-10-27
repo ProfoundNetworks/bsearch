@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -13,19 +12,11 @@ import (
 	"github.com/ProfoundNetworks/bsearch"
 )
 
-var update *bool
-
 // Set by TestMain
 var (
 	bsearchBin string // freshly built bsearch binary
 	tmpdir     string // scratch dir holding bsearchBin and indexed datasets
 )
-
-func init() {
-	testing.Init()
-	update = flag.Bool("u", false, "update .golden files")
-	flag.Parse()
-}
 
 // TestMain builds bsearch into a temporary directory, so tests never run
 // against a stale ./bsearch binary
