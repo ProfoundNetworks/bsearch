@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -317,5 +318,33 @@ func TestNewIndexCompressed(t *testing.T) {
 		if _, err := NewIndex(path); err != ErrFileCompressed {
 			t.Errorf("%s: got %v, expected ErrFileCompressed", ext, err)
 		}
+	}
+}
+
+// openFDs returns the number of open file descriptors (Linux only)
+func openFDs(t *testing.T) int {
+	t.Helper()
+	entries, err := os.ReadDir("/proc/self/fd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(entries)
+}
+
+// Test that NewIndex closes the dataset after reading it
+func TestNewIndexClosesFile(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("needs /proc/self/fd")
+	}
+	path := filepath.Join("testdata", "indexme.csv")
+
+	before := openFDs(t)
+	for i := 0; i < 10; i++ {
+		if _, err := NewIndex(path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if after := openFDs(t); after != before {
+		t.Errorf("open file descriptors went from %d to %d", before, after)
 	}
 }

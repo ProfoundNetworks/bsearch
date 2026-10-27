@@ -277,6 +277,7 @@ func NewIndexOptions(path string, opt IndexOptions) (*Index, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer reader.Close()
 
 	delim := opt.Delimiter
 	if len(delim) == 0 {
