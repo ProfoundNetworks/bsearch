@@ -863,3 +863,38 @@ func TestLoadIndexStaleness(t *testing.T) {
 		t.Errorf("relocated: got %v, expected nil", err)
 	}
 }
+
+// Test that quotes in a header line don't stop the dataset being indexed
+// (header fields are informational, so they're parsed leniently)
+func TestNewIndexHeaderQuotes(t *testing.T) {
+	var tests = []struct {
+		name   string
+		data   string
+		opt    IndexOptions
+		expect []string // nil means any fields will do
+	}{
+		{"bare quote, detected", "z \"x\" y,v\na,1\nb,2\n", IndexOptions{},
+			[]string{`z "x" y`, "v"}},
+		{"bare quote, explicit", "a \"x\",v\nb,1\nc,2\n", IndexOptions{Header: true},
+			[]string{`a "x"`, "v"}},
+		{"unterminated quote, explicit", "\"z,v\na,1\nb,2\n", IndexOptions{Header: true}, nil},
+	}
+
+	for _, tc := range tests {
+		path := filepath.Join(t.TempDir(), "data.csv")
+		if err := os.WriteFile(path, []byte(tc.data), 0644); err != nil {
+			t.Fatal(err)
+		}
+		idx, err := NewIndexOptions(path, tc.opt)
+		if err != nil {
+			t.Errorf("%s: got error %v", tc.name, err)
+			continue
+		}
+		if !idx.Header {
+			t.Errorf("%s: header not recorded", tc.name)
+		}
+		if tc.expect != nil && !slices.Equal(idx.HeaderFields, tc.expect) {
+			t.Errorf("%s: headerFields: got %q, expected %q", tc.name, idx.HeaderFields, tc.expect)
+		}
+	}
+}

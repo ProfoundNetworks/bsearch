@@ -117,14 +117,18 @@ func deriveDelimiter(filename string) ([]byte, error) {
 	return []byte{}, ErrUnknownDelimiter
 }
 
-func csvSplitBytes(line []byte, delim string) ([]string, error) {
+// csvSplitBytes splits a header line into fields. Header fields are only
+// informational, so parsing is lenient: stray quotes are allowed, and a
+// line the csv package still can't parse is split on delim instead.
+func csvSplitBytes(line []byte, delim string) []string {
 	reader := csv.NewReader(bytes.NewReader(line))
 	reader.Comma = rune(delim[0])
+	reader.LazyQuotes = true
 	s, err := reader.Read()
 	if err != nil {
-		return []string{}, err
+		return strings.Split(string(line), delim)
 	}
-	return s, nil
+	return s
 }
 
 // generateLineIndex processes the input from reader line-by-line,
@@ -164,11 +168,7 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 			// begin indexing from the second
 			skipHeader = false
 			blockPosition += int64(len(line) + 1)
-			fields, err := csvSplitBytes(line, string(index.Delimiter))
-			if err != nil {
-				return err
-			}
-			index.HeaderFields = fields
+			index.HeaderFields = csvSplitBytes(line, string(index.Delimiter))
 			continue
 		}
 
@@ -190,11 +190,7 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 			// FIXME: should we have an option to disallow this?
 			if lineNumber == 2 && !index.Header {
 				index.Header = true
-				fields, err := csvSplitBytes(firstLine, string(index.Delimiter))
-				if err != nil {
-					return err
-				}
-				index.HeaderFields = fields
+				index.HeaderFields = csvSplitBytes(firstLine, string(index.Delimiter))
 				// Reset list and blockNumber to restart
 				list = []IndexEntry{}
 				blockNumber = -1
