@@ -10,8 +10,10 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ProfoundNetworks/bsearch"
+	yaml "gopkg.in/yaml.v3"
 )
 
 // Set by TestMain
@@ -435,5 +437,304 @@ func TestIndexRIRHeader(t *testing.T) {
 				t.Errorf("entry %d last line: got %q, expected %q", i, got, expect)
 			}
 		}
+	}
+}
+
+// copyToTemp copies the file at src into a fresh t.TempDir(), returning the
+// path of the copy
+func copyToTemp(t *testing.T, src string) string {
+	t.Helper()
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return writeTemp(t, filepath.Base(src), data)
+}
+
+// writeTemp writes data to name in a fresh t.TempDir(), returning its path
+func writeTemp(t *testing.T, name string, data []byte) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// indexPath returns the index path for dataset path
+func indexPath(t *testing.T, path string) string {
+	t.Helper()
+	idxpath, err := bsearch.IndexPath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return idxpath
+}
+
+// runIndex runs bsearch_index with args and fails unless it exits 0 with
+// empty stdout and stderr
+func runIndex(t *testing.T, args ...string) {
+	t.Helper()
+	stdout, stderr, code := runBin(t, bsearchIndexBin, args...)
+	if code != 0 {
+		t.Fatalf("%q: expected exit 0, got %d (stderr %q)", args, code, stderr)
+	}
+	if stdout != "" {
+		t.Errorf("%q: expected empty stdout, got %q", args, stdout)
+	}
+	if stderr != "" {
+		t.Errorf("%q: expected empty stderr, got %q", args, stderr)
+	}
+}
+
+// ageIndex backdates path to two hours ago and its index to one hour ago,
+// so the index is still up to date but a rewrite would change its mtime.
+// It returns the index's new mtime.
+func ageIndex(t *testing.T, path string) time.Time {
+	t.Helper()
+	now := time.Now().Truncate(time.Second)
+	dataTime, idxTime := now.Add(-2*time.Hour), now.Add(-time.Hour)
+	if err := os.Chtimes(path, dataTime, dataTime); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(indexPath(t, path), idxTime, idxTime); err != nil {
+		t.Fatal(err)
+	}
+	return idxTime
+}
+
+// Test that bsearch_index writes an index that LoadIndex accepts and that
+// matches the library's own index for the dataset
+func TestCmdWritesIndex(t *testing.T) {
+	path := copyToTemp(t, filepath.Join("..", "..", "testdata", "rdns1.csv"))
+	runIndex(t, path)
+
+	loaded, err := bsearch.LoadIndex(path)
+	if err != nil {
+		t.Fatalf("LoadIndex: %s", err)
+	}
+	expect, err := bsearch.NewIndex(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Filename != "rdns1.csv" {
+		t.Errorf("Filename: got %q, expected %q", loaded.Filename, "rdns1.csv")
+	}
+	if loaded.Blocksize != 2048 {
+		t.Errorf("Blocksize: got %d, expected %d", loaded.Blocksize, 2048)
+	}
+	if string(loaded.Delimiter) != "," {
+		t.Errorf("Delimiter: got %q, expected %q", loaded.Delimiter, ",")
+	}
+	if loaded.KeysUnique {
+		t.Errorf("KeysUnique: got %v, expected %v", loaded.KeysUnique, false)
+	}
+	if loaded.Length == 0 || loaded.Length != expect.Length {
+		t.Errorf("Length: got %d, expected %d", loaded.Length, expect.Length)
+	}
+	if !reflect.DeepEqual(loaded.List, expect.List) {
+		t.Errorf("List differs from bsearch.NewIndex:\ngot      %+v\nexpected %+v",
+			loaded.List, expect.List)
+	}
+}
+
+// Test that re-running on an up-to-date index leaves it alone, and that
+// -f/--force rewrites it
+func TestCmdUpToDate(t *testing.T) {
+	path := copyToTemp(t, filepath.Join("..", "..", "testdata", "domains1.csv"))
+	idxpath := indexPath(t, path)
+	runIndex(t, path)
+	before, err := os.ReadFile(idxpath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("no-op", func(t *testing.T) {
+		idxTime := ageIndex(t, path)
+		runIndex(t, path)
+
+		stdout, stderr, code := runBin(t, bsearchIndexBin, "-v", path)
+		if code != 0 {
+			t.Errorf("-v: expected exit 0, got %d", code)
+		}
+		if stdout != "" {
+			t.Errorf("-v: expected empty stdout, got %q", stdout)
+		}
+		if !strings.Contains(stderr, "index file found and up to date") {
+			t.Errorf("-v: expected up-to-date message on stderr, got %q", stderr)
+		}
+
+		stat, err := os.Stat(idxpath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !stat.ModTime().Equal(idxTime) {
+			t.Errorf("index mtime: got %v, expected unchanged %v", stat.ModTime(), idxTime)
+		}
+		after, err := os.ReadFile(idxpath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(after, before) {
+			t.Errorf("index contents changed:\ngot:\n%s\nexpected:\n%s", after, before)
+		}
+	})
+
+	for _, flag := range []string{"-f", "--force"} {
+		t.Run(flag, func(t *testing.T) {
+			idxTime := ageIndex(t, path)
+			runIndex(t, flag, path)
+
+			stat, err := os.Stat(idxpath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !stat.ModTime().After(idxTime.Add(30 * time.Minute)) {
+				t.Errorf("index mtime: got %v, expected it rewritten after %v",
+					stat.ModTime(), idxTime)
+			}
+			if _, err := bsearch.LoadIndex(path); err != nil {
+				t.Errorf("LoadIndex after %s: %s", flag, err)
+			}
+		})
+	}
+}
+
+// Test that -c/--cat prints the index as YAML and writes no index file
+func TestCmdCat(t *testing.T) {
+	for _, flag := range []string{"-c", "--cat"} {
+		t.Run(flag, func(t *testing.T) {
+			path := copyToTemp(t, filepath.Join("..", "..", "testdata", "domains1.csv"))
+			stdout, stderr, code := runBin(t, bsearchIndexBin, flag, path)
+			if code != 0 {
+				t.Errorf("expected exit 0, got %d", code)
+			}
+			if stderr != "" {
+				t.Errorf("expected empty stderr, got %q", stderr)
+			}
+
+			var index bsearch.Index
+			if err := yaml.Unmarshal([]byte(stdout), &index); err != nil {
+				t.Fatalf("stdout is not YAML: %s\n%s", err, stdout)
+			}
+			if index.Filename != "domains1.csv" {
+				t.Errorf("Filename: got %q, expected %q", index.Filename, "domains1.csv")
+			}
+			if index.Version != 4 {
+				t.Errorf("Version: got %d, expected %d", index.Version, 4)
+			}
+			if !index.KeysUnique {
+				t.Errorf("KeysUnique: got %v, expected %v", index.KeysUnique, true)
+			}
+			expectList := []bsearch.IndexEntry{{Key: "accuweather.com", Offset: 0}}
+			if !reflect.DeepEqual(index.List, expectList) {
+				t.Errorf("List: got %+v, expected %+v", index.List, expectList)
+			}
+
+			if _, err := os.Stat(indexPath(t, path)); !os.IsNotExist(err) {
+				t.Errorf("expected no index file, got stat error %v", err)
+			}
+		})
+	}
+}
+
+// Test that -b sets the blocksize in kB
+func TestCmdBlocksize(t *testing.T) {
+	path := copyToTemp(t, filepath.Join("..", "..", "testdata", "rdns1.csv"))
+	runIndex(t, "-b", "4", path)
+
+	index, err := bsearch.LoadIndex(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if index.Blocksize != 4096 {
+		t.Errorf("Blocksize: got %d, expected %d", index.Blocksize, 4096)
+	}
+	expect, err := bsearch.NewIndexOptions(path, bsearch.IndexOptions{Blocksize: 4096})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if index.Length != expect.Length {
+		t.Errorf("Length: got %d, expected %d", index.Length, expect.Length)
+	}
+}
+
+// Test -t on a dataset whose delimiter can't be guessed, with and without --hdr
+func TestCmdSepHeader(t *testing.T) {
+	// "KEY" sorts before the data keys, so the header isn't auto-detected
+	data := []byte("KEY|VAL\na|1\nb|2\nc|3\n")
+	tests := []struct {
+		args         []string
+		header       bool
+		headerFields []string
+		firstKey     string
+	}{
+		{[]string{"-t", "|"}, false, nil, "KEY"},
+		{[]string{"--sep", "|", "--hdr"}, true, []string{"KEY", "VAL"}, "a"},
+	}
+	for _, tc := range tests {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			path := writeTemp(t, "data.txt", data)
+			runIndex(t, append(tc.args, path)...)
+
+			index, err := bsearch.LoadIndex(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(index.Delimiter) != "|" {
+				t.Errorf("Delimiter: got %q, expected %q", index.Delimiter, "|")
+			}
+			if index.Header != tc.header {
+				t.Errorf("Header: got %v, expected %v", index.Header, tc.header)
+			}
+			if !reflect.DeepEqual(index.HeaderFields, tc.headerFields) {
+				t.Errorf("HeaderFields: got %q, expected %q", index.HeaderFields, tc.headerFields)
+			}
+			if len(index.List) != 1 || index.List[0].Key != tc.firstKey {
+				t.Errorf("List: got %+v, expected one entry with key %q", index.List, tc.firstKey)
+			}
+		})
+	}
+}
+
+// Test bsearch_index failures: exit status, stderr, and no index written
+func TestCmdErrors(t *testing.T) {
+	tests := []struct {
+		name   string
+		file   string
+		data   string // "" means don't create file
+		code   int
+		stderr string // substring expected in stderr
+	}{
+		// The violation is on line 4: an out-of-order line 2 would be
+		// taken as a header instead
+		{"unsorted", "data.csv", "a,1\nb,2\nc,3\nb,4\n", 1,
+			`key sort violation - "c" > "b"`},
+		{"missing", "nosuch.csv", "", 1, "no such file or directory"},
+		{"no delimiter", "data.txt", "a|1\nb|2\n", 1, "cannot guess delimiter"},
+		{"compressed", "data.csv.gz", "a,1\n", 2, "appears to be compressed - cannot binary search"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), tc.file)
+			if tc.data != "" {
+				if err := os.WriteFile(path, []byte(tc.data), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			stdout, stderr, code := runBin(t, bsearchIndexBin, path)
+			if code != tc.code {
+				t.Errorf("expected exit %d, got %d", tc.code, code)
+			}
+			if stdout != "" {
+				t.Errorf("expected empty stdout, got %q", stdout)
+			}
+			if !strings.Contains(stderr, tc.stderr) {
+				t.Errorf("expected stderr to contain %q, got %q", tc.stderr, stderr)
+			}
+			if _, err := os.Stat(indexPath(t, path)); !os.IsNotExist(err) {
+				t.Errorf("expected no index file, got stat error %v", err)
+			}
+		})
 	}
 }

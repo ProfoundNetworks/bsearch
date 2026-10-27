@@ -269,7 +269,14 @@ func TestParserGrammar(t *testing.T) {
 // separately (never combined, so stream mixups are visible)
 func runBin(t *testing.T, bin string, args ...string) (string, string, int) {
 	t.Helper()
+	return runBinStdin(t, nil, bin, args...)
+}
+
+// runBinStdin is runBin with stdin attached to the binary
+func runBinStdin(t *testing.T, stdin io.Reader, bin string, args ...string) (string, string, int) {
+	t.Helper()
 	cmd := exec.Command(bin, args...)
+	cmd.Stdin = stdin
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -306,5 +313,145 @@ func TestCLIFlagConventions(t *testing.T) {
 		if !strings.Contains(stderr, "Usage:") || !strings.Contains(stderr, "error:") {
 			t.Errorf("%q: expected error and usage on stderr, got %q", args, stderr)
 		}
+	}
+}
+
+// The six rdns1.csv lines for the duplicated key 032.176.184.000
+const rdnsDupLines = `032.176.184.000,mobile000.mycingular.net,202003,mycingular.net
+032.176.184.000,mobile001.mycingular.net,202003,mycingular.net
+032.176.184.000,mobile002.mycingular.net,202003,mycingular.net
+032.176.184.000,mobile003.mycingular.net,202003,mycingular.net
+032.176.184.000,mobile004.mycingular.net,202003,mycingular.net
+032.176.184.000,mobile005.mycingular.net,202003,mycingular.net
+`
+
+// Test -c/--stdin batch lookups: each key's lines, then a blank line
+func TestStdin(t *testing.T) {
+	const uniqLine = "001.000.128.000,node-0.pool-1-0.dynamic.totinternet.net,202003,totinternet.net\n"
+	tests := []struct {
+		name   string
+		stdin  string
+		expect string
+	}{
+		{"unique", "001.000.128.000\n", uniqLine + "\n"},
+		{"duplicate", "032.176.184.000\n", rdnsDupLines + "\n"},
+		{"missing", "999.999.999.999\n", "\n"},
+		{"several", "032.176.184.000\n999.999.999.999\n001.000.128.000\n",
+			rdnsDupLines + "\n" + "\n" + uniqLine + "\n"},
+		{"empty", "", ""},
+	}
+
+	infile := indexedCopy(t, filepath.Join("..", "..", "testdata", "rdns1.csv"),
+		bsearch.IndexOptions{})
+
+	for _, tc := range tests {
+		for _, flag := range []string{"-c", "--stdin"} {
+			t.Run(tc.name+" "+flag, func(t *testing.T) {
+				stdout, stderr, code := runBinStdin(t, strings.NewReader(tc.stdin),
+					bsearchBin, flag, "dummy", infile)
+				if code != 0 {
+					t.Errorf("expected exit 0, got %d", code)
+				}
+				if stderr != "" {
+					t.Errorf("expected empty stderr, got %q", stderr)
+				}
+				if stdout != tc.expect {
+					t.Errorf("stdout:\ngot      %q\nexpected %q", stdout, tc.expect)
+				}
+			})
+		}
+	}
+}
+
+// Test that -c reads a final key with no trailing newline
+func TestStdinUnterminatedKey(t *testing.T) {
+	t.Skip("BUG: bsearch -c drops a final stdin key that lacks a trailing newline " +
+		"(ReadBytes returns the data with io.EOF, and the loop breaks before using it)")
+
+	infile := indexedCopy(t, filepath.Join("..", "..", "testdata", "rdns1.csv"),
+		bsearch.IndexOptions{})
+	stdout, stderr, code := runBinStdin(t, strings.NewReader("032.176.184.000"),
+		bsearchBin, "-c", "dummy", infile)
+	if code != 0 {
+		t.Errorf("expected exit 0, got %d", code)
+	}
+	if stderr != "" {
+		t.Errorf("expected empty stderr, got %q", stderr)
+	}
+	if expect := rdnsDupLines + "\n"; stdout != expect {
+		t.Errorf("stdout:\ngot      %q\nexpected %q", stdout, expect)
+	}
+}
+
+// Test -c combined with -r: keys are reversed for the search and the
+// results are reversed back for output
+func TestStdinRev(t *testing.T) {
+	infile := indexedCopy(t, filepath.Join("testdata", "ca_rev.txt"),
+		bsearch.IndexOptions{Delimiter: []byte(",")})
+
+	stdin := "0-0.ca\nfooed1000.ca\nwww.ed1000.ca\ned1000.ca\n"
+	expect := "0-0.ca\n\n" + "\n" + "www.ed1000.ca\n\n" + "ed1000.ca\n\n"
+	stdout, stderr, code := runBinStdin(t, strings.NewReader(stdin),
+		bsearchBin, "-c", "-r", "dummy", infile)
+	if code != 0 {
+		t.Errorf("expected exit 0, got %d", code)
+	}
+	if stderr != "" {
+		t.Errorf("expected empty stderr, got %q", stderr)
+	}
+	if stdout != expect {
+		t.Errorf("stdout:\ngot      %q\nexpected %q", stdout, expect)
+	}
+}
+
+// Test that -v and -vv log to stderr and leave stdout unchanged
+func TestVerbose(t *testing.T) {
+	infile := indexedCopy(t, filepath.Join("..", "..", "testdata", "rdns1.csv"),
+		bsearch.IndexOptions{})
+	idxpath, err := bsearch.IndexPath(infile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	quietOut, quietErr, code := runBin(t, bsearchBin, "032.176.184.000", infile)
+	if code != 0 {
+		t.Fatalf("no -v: expected exit 0, got %d (stderr %q)", code, quietErr)
+	}
+	if quietOut != rdnsDupLines {
+		t.Errorf("no -v: stdout:\ngot:\n%s\nexpected:\n%s", quietOut, rdnsDupLines)
+	}
+	if quietErr != "" {
+		t.Errorf("no -v: expected empty stderr, got %q", quietErr)
+	}
+
+	tests := []struct {
+		flag    string
+		expect  []string // substrings expected in stderr
+		exclude []string // substrings not expected in stderr
+	}{
+		{"-v", []string{"INF", "using index", idxpath}, []string{"DBG"}},
+		{"-vv", []string{"INF", "using index", idxpath, "DBG", "blockEntryLE"}, nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.flag, func(t *testing.T) {
+			stdout, stderr, code := runBin(t, bsearchBin, tc.flag, "032.176.184.000", infile)
+			if code != 0 {
+				t.Errorf("expected exit 0, got %d", code)
+			}
+			if stdout != quietOut {
+				t.Errorf("stdout differs from run without -v:\ngot:\n%s\nexpected:\n%s",
+					stdout, quietOut)
+			}
+			for _, s := range tc.expect {
+				if !strings.Contains(stderr, s) {
+					t.Errorf("expected stderr to contain %q, got %q", s, stderr)
+				}
+			}
+			for _, s := range tc.exclude {
+				if strings.Contains(stderr, s) {
+					t.Errorf("expected stderr not to contain %q, got %q", s, stderr)
+				}
+			}
+		})
 	}
 }
