@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Run bsearch_selftest against the large datasets in data/ (not in the repo).
+# Builds bsearch_index and bsearch_selftest into bin/, (re)indexes each
+# dataset if its index is missing or stale, then checks every dataset and
+# exits 1 if any of them failed.
+
+set -euo pipefail
+
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." >/dev/null && pwd)"
+cd -- "$repo_root" >/dev/null
+
+for name in bsearch_index bsearch_selftest; do
+    echo "build $name"
+    go build -buildvcs=false -o "bin/$name" "./cmd/$name"
+done
+echo
+
+# Show line-count progress on big inputs when pv is available
+if command -v pv >/dev/null; then
+    reader=(pv -l)
+else
+    reader=(cat)
+fi
+# Colour dataset headings only on a terminal
+if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+    heading='\e[1;34m%s\e[0m\n'
+else
+    heading='%s\n'
+fi
+TIMEFORMAT='Elapsed: %1Rs'
+failed=()
+
+# selftest DATASET INPUT checks INPUT's lines can all be found in DATASET
+selftest() {
+    local ds=$1 input=$2
+    printf "$heading" "$ds"
+    bin/bsearch_index "$ds"
+    if ! time "${reader[@]}" "$input" | bin/bsearch_selftest --hdr -i "$ds"; then
+        failed+=("$ds")
+    fi
+    echo
+}
+
+# Dup-key datasets are tested on their full, sorted contents: selftest's
+# dup-key path groups consecutive input lines by key, so it needs sorted
+# input and can't take the shuffled _r1 files (a sorted sample would do)
+for ds in data/foo.csv; do
+    selftest "$ds" "$ds"
+done
+
+# Uniq-key datasets check each line independently, so we can test them
+# with shuffled _r1 inputs instead
+shopt -s nullglob
+for rand in data/*_r1.[cpt]sv; do
+    selftest "${rand/_r1./.}" "$rand"
+done
+
+if (( ${#failed[@]} > 0 )); then
+    echo "failed:" >&2
+    printf '  %s\n' "${failed[@]}" >&2
+    exit 1
+fi
