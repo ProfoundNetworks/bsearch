@@ -45,20 +45,13 @@ type SearcherOptions struct {
 // Searcher provides binary search functionality on byte-ordered CSV-style
 // delimited text files.
 type Searcher struct {
-	r        io.ReaderAt  // data reader
-	l        int64        // data length
-	mmap     mmap.MMap    // data mmap
-	filepath string       // filename path
-	Index    *Index       // bsearch index
-	matchLE  bool         // LinePosition uses less-than-or-equal-to match semantics
-	logger   *slog.Logger // debug logger
-	closed   bool         // set by Close
+	r       io.ReaderAt  // data reader
+	mmap    mmap.MMap    // data mmap
+	Index   *Index       // bsearch index
+	matchLE bool         // LinePosition uses less-than-or-equal-to match semantics
+	logger  *slog.Logger // debug logger
+	closed  bool         // set by Close
 }
-
-//buf      []byte          // data buffer
-//bufOffset int64       // data buffer offset
-//dbuf       []byte          // decompressed data buffer
-//dbufOffset int64           // decompressed data buffer offset
 
 // setOptions sets the given options on searcher
 func (s *Searcher) setOptions(options SearcherOptions) {
@@ -84,7 +77,7 @@ func NewSearcherOptions(path string, opt SearcherOptions) (*Searcher, error) {
 		return nil, err
 	}
 
-	// Get file length and epoch
+	// Check path is an existing, uncompressed file
 	stat, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -98,7 +91,6 @@ func NewSearcherOptions(path string, opt SearcherOptions) (*Searcher, error) {
 	if reCompressedUnsupported.MatchString(path) {
 		return nil, ErrFileCompressed
 	}
-	filesize := stat.Size()
 
 	// Open file
 	rdr, err := os.Open(path)
@@ -114,14 +106,9 @@ func NewSearcherOptions(path string, opt SearcherOptions) (*Searcher, error) {
 	}
 
 	s := Searcher{
-		r:        rdr,
-		l:        filesize,
-		mmap:     mmap,
-		filepath: path,
+		r:    rdr,
+		mmap: mmap,
 	}
-	//buf:  nil,
-	//bufOffset: -1,
-	//dbufOffset: -1,
 	s.setOptions(opt)
 
 	// Load index
@@ -263,15 +250,6 @@ func (s *Searcher) LinesN(key []byte, n int) ([][]byte, error) {
 	// If keys are unique max(n) is 1
 	if n == 0 && s.Index.KeysUnique {
 		n = 1
-	}
-
-	// If no index exists, build and use a temporary one (but don't write)
-	if s.Index == nil {
-		index, err := NewIndex(s.filepath)
-		if err != nil {
-			return [][]byte{}, err
-		}
-		s.Index = index
 	}
 
 	return s.scanIndexedLines(key, n)
