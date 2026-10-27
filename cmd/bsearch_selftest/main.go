@@ -34,6 +34,10 @@ type Options struct {
 
 var opts Options
 
+// maxLineLength is the longest test-data line we accept; it matches the
+// limit bsearch.NewIndex applies when indexing
+const maxLineLength = 64 * 1024 * 1024
+
 // newParser builds the kong parser for bsearch_selftest over o.
 func newParser(o *Options) (*kong.Kong, error) {
 	return kong.New(o,
@@ -161,6 +165,7 @@ func main() {
 	defer bss.Close()
 	keysUnique := bss.Index.KeysUnique
 	scanner := bufio.NewScanner(fh)
+	scanner.Buffer(make([]byte, 64*1024), maxLineLength)
 
 	// Process
 	rownum := 1

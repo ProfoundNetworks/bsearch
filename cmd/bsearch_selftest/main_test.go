@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ProfoundNetworks/bsearch"
 )
 
 // Set by TestMain
@@ -132,5 +134,31 @@ func TestCLIFlagConventions(t *testing.T) {
 		if !strings.Contains(stderr, "Usage:") || !strings.Contains(stderr, "error:") {
 			t.Errorf("%q: expected error and usage on stderr, got %q", args, stderr)
 		}
+	}
+}
+
+// Test that selftest passes on a dataset with a line longer than
+// bufio.Scanner's default 64KB limit
+func TestSelftestLongLine(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.csv")
+	data := "a,1\nb," + strings.Repeat("x", 100*1024) + "\nc,3\n"
+	if err := os.WriteFile(path, []byte(data), 0644); err != nil {
+		t.Fatal(err)
+	}
+	idx, err := bsearch.NewIndex(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.Write(); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr, code := runBin(t, bsearchSelftestBin, path)
+	if code != 0 {
+		t.Fatalf("exit %d, stderr: %s", code, stderr)
+	}
+	expect := "ok 1 a\nok 2 b\nok 3 c\n"
+	if stdout != expect {
+		t.Errorf("got:\n%s\nexpected:\n%s", stdout, expect)
 	}
 }
