@@ -1,6 +1,8 @@
 package bsearch
 
 import (
+	"encoding/csv"
+	"errors"
 	"strings"
 	"testing"
 
@@ -229,6 +231,23 @@ func TestDBGetSliceFields(t *testing.T) {
 	expect := `cannot convert multi-character delimiter "::" to rune`
 	if err == nil || err.Error() != expect {
 		t.Errorf("multi-character GetSlice: got %q, %v, expected error %q", s, err, expect)
+	}
+
+	// A value the csv package can't parse is an error for GetSlice, but
+	// Get still returns it raw
+	path = indexedData(t, "bad.csv", "a,x\"y\nb,1\n", IndexOptions{})
+	db3, err := NewDB(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db3.Close()
+
+	if val, err := db3.GetString("a"); err != nil || val != `x"y` {
+		t.Errorf("bare quote Get: got %q, %v, expected %q", val, err, `x"y`)
+	}
+	s, err = db3.GetSlice("a")
+	if !errors.Is(err, csv.ErrBareQuote) || len(s) != 0 {
+		t.Errorf("bare quote GetSlice: got %q, %v, expected csv.ErrBareQuote", s, err)
 	}
 }
 

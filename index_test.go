@@ -908,8 +908,9 @@ func TestLoadIndexStaleness(t *testing.T) {
 	}
 }
 
-// Test that quotes in a header line don't stop the dataset being indexed
-// (header fields are informational, so they're parsed leniently)
+// Test that quotes in a header line, or a header the csv package can't
+// parse at all, don't stop the dataset being indexed (header fields are
+// informational, so they're parsed leniently)
 func TestNewIndexHeaderQuotes(t *testing.T) {
 	var tests = []struct {
 		name   string
@@ -922,6 +923,9 @@ func TestNewIndexHeaderQuotes(t *testing.T) {
 		{"bare quote, explicit", "a \"x\",v\nb,1\nc,2\n", IndexOptions{Header: true},
 			[]string{`a "x"`, "v"}},
 		{"unterminated quote, explicit", "\"z,v\na,1\nb,2\n", IndexOptions{Header: true}, nil},
+		// csv.Reader returns io.EOF for an empty line, so this takes the
+		// strings.Split fallback
+		{"empty, explicit", "\na,1\nb,2\n", IndexOptions{Header: true}, []string{""}},
 	}
 
 	for _, tc := range tests {
