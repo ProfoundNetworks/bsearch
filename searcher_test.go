@@ -642,10 +642,6 @@ func TestSearcherLineEdges(t *testing.T) {
 // Test that a key-only line doesn't hide a following line whose key
 // extends it with a byte that sorts below '\n' (e.g. a tab in a CSV key)
 func TestSearcherLineKeyBelowNewline(t *testing.T) {
-	t.Skip("BUG: scanLinesWithKey compares len(key) bytes from each line, " +
-		"running past the end of a shorter key-only line into the next one; " +
-		"'\\n' then compares greater than the key's '\\t' and the scan stops early")
-
 	path := indexedData(t, "data.csv", "a\na\tb,1\n", IndexOptions{})
 	s, err := NewSearcher(path)
 	if err != nil {

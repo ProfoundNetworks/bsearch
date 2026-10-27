@@ -123,6 +123,12 @@ func NewSearcherOptions(path string, opt SearcherOptions) (*Searcher, error) {
 func getNBytesFrom(buf []byte, length int, delim []byte) []byte {
 	segment := buf[:length]
 
+	// If segment runs past the end of the line (a short, key-only line),
+	// truncate it there, so it doesn't pick up bytes from the next line
+	if nl := bytes.IndexByte(segment, '\n'); nl > -1 {
+		segment = segment[:nl]
+	}
+
 	// If segment includes a delimiter, truncate it there
 	if d := bytes.Index(segment, delim); d > -1 {
 		return segment[:d]
