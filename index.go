@@ -349,14 +349,19 @@ func LoadIndex(path string) (*Index, error) {
 
 	reader := bufio.NewReader(fh)
 
+	// A header without a trailing newline comes back with io.EOF; parse it
+	// anyway, and let the entry checks below report what's missing
 	firstLine, err := reader.ReadBytes('\n')
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return nil, err
+	}
+	if len(firstLine) == 0 {
+		return nil, errors.New("malformed index: empty index file")
 	}
 	var index Index
 	err = json.Unmarshal(firstLine, &index)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("malformed index: bad header line: %w", err)
 	}
 	// New indices set Filename, and we derive Filepath
 	if index.Filename != "" {

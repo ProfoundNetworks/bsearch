@@ -687,13 +687,18 @@ func TestLoadIndexMalformed(t *testing.T) {
 
 // Test that LoadIndex rejects an index without a valid JSON header line
 func TestLoadIndexBadHeader(t *testing.T) {
+	header := `{"Blocksize":2048,"Delimiter":"LA==","Filename":"data.csv",` +
+		`"KeysIndexFirst":true,"Length":1,"Version":4}`
 	var tests = []struct {
-		name  string
-		index string
+		name   string
+		index  string
+		expect string // error prefix
+		json   bool   // error should also wrap a *json.SyntaxError
 	}{
-		{"empty index file", ""},
-		{"header not JSON", "not json\n0\t\"a\"\n"},
-		{"header truncated", "{\"Blocksize\":2048,\n0\t\"a\"\n"},
+		{"empty index file", "", "malformed index: empty index file", false},
+		{"header without newline", header, "malformed index: premature EOF on line 1", false},
+		{"header not JSON", "not json\n0\t\"a\"\n", "malformed index: bad header line: ", true},
+		{"header truncated", "{\"Blocksize\":2048,\n0\t\"a\"\n", "malformed index: bad header line: ", true},
 	}
 
 	for _, tc := range tests {
@@ -712,12 +717,14 @@ func TestLoadIndexBadHeader(t *testing.T) {
 		idx, err := LoadIndex(path)
 		if err == nil || idx != nil {
 			t.Errorf("%s: got index %v, error %v, expected an error", tc.name, idx, err)
+			continue
 		}
-		if tc.index != "" {
-			var syntaxErr *json.SyntaxError
-			if !errors.As(err, &syntaxErr) {
-				t.Errorf("%s: got error %v, expected a JSON syntax error", tc.name, err)
-			}
+		if !strings.HasPrefix(err.Error(), tc.expect) {
+			t.Errorf("%s: got error %q, expected prefix %q", tc.name, err, tc.expect)
+		}
+		var syntaxErr *json.SyntaxError
+		if tc.json && !errors.As(err, &syntaxErr) {
+			t.Errorf("%s: got error %v, expected a JSON syntax error", tc.name, err)
 		}
 	}
 }
