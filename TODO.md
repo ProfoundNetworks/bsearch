@@ -1,9 +1,5 @@
 # TODO
 
-- [ ] Make `bsearch_index` regenerate an up-to-date index when explicit
-      options (`--hdr`, `--no-hdr`, `-t`, `-b`) disagree with it. Today
-      the `LoadIndex` early exit reports "up to date" and keeps the old
-      index unless `--force` is given.
 - [ ] Remove or implement `SearcherOptions.Header`. `searcher.go` never
       reads it, so `bsearch -H` has no effect; header handling comes
       entirely from the index.

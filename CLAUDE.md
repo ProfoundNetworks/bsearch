@@ -100,7 +100,9 @@ The `main_test.go` in each tool checks both streams separately.
 
 - `bsearch_index` builds and writes the index. `--cat` dumps it as YAML
   instead; `-b` sets the blocksize in kB; `--hdr`/`--no-hdr` (mutually
-  exclusive) override header auto-detection.
+  exclusive) override header auto-detection. Without `-f`, it leaves an
+  up-to-date index alone unless an explicitly given option disagrees with
+  it (`optionsDiffer`).
 - `bsearch` looks up a key in a dataset:
   - `-c/--stdin` does batch lookups and prints a blank line after each key's
     results.

@@ -603,6 +603,74 @@ func TestCmdUpToDate(t *testing.T) {
 	}
 }
 
+// Test that an up-to-date index is regenerated without --force when an
+// explicit option disagrees with it, and left alone when they all agree
+func TestCmdOptionsChanged(t *testing.T) {
+	// "KEY" sorts before the data keys, so the header isn't auto-detected
+	const sorted = "KEY,VAL\na,1\nb,2\n"
+	const autoHeader = "key,val\na,1\nb,2\n"
+	tests := []struct {
+		name    string
+		data    string
+		initial []string // args for the first run
+		args    []string // args for the second run
+		rewrite bool
+		check   func(*bsearch.Index) bool
+	}{
+		{"hdr differs", sorted, nil, []string{"--hdr"}, true,
+			func(i *bsearch.Index) bool { return i.Header }},
+		{"hdr matches detected", autoHeader, nil, []string{"--hdr"}, false,
+			func(i *bsearch.Index) bool { return i.Header }},
+		{"no-hdr differs", sorted, []string{"--hdr"}, []string{"--no-hdr"}, true,
+			func(i *bsearch.Index) bool { return !i.Header }},
+		{"no-hdr matches", sorted, nil, []string{"--no-hdr"}, false,
+			func(i *bsearch.Index) bool { return !i.Header }},
+		{"sep differs", sorted, nil, []string{"-t", "|"}, true,
+			func(i *bsearch.Index) bool { return string(i.Delimiter) == "|" }},
+		{"sep matches", sorted, nil, []string{"-t", ","}, false,
+			func(i *bsearch.Index) bool { return string(i.Delimiter) == "," }},
+		{"bs differs", sorted, nil, []string{"-b", "4"}, true,
+			func(i *bsearch.Index) bool { return i.Blocksize == 4096 }},
+		{"bs matches", sorted, nil, []string{"-b", "2"}, false,
+			func(i *bsearch.Index) bool { return i.Blocksize == 2048 }},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeTemp(t, "data.csv", []byte(tc.data))
+			runIndex(t, append(tc.initial, path)...)
+			idxTime := ageIndex(t, path)
+
+			args := append([]string{"-v"}, append(tc.args, path)...)
+			stdout, stderr, code := runBin(t, bsearchIndexBin, args...)
+			if code != 0 || stdout != "" {
+				t.Fatalf("%q: got exit %d, stdout %q (stderr %q)", args, code, stdout, stderr)
+			}
+			msg := "index file found and up to date"
+			if tc.rewrite {
+				msg = "index options differ, regenerating"
+			}
+			if !strings.Contains(stderr, msg) {
+				t.Errorf("%q: expected %q on stderr, got %q", args, msg, stderr)
+			}
+
+			stat, err := os.Stat(indexPath(t, path))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rewritten := !stat.ModTime().Equal(idxTime); rewritten != tc.rewrite {
+				t.Errorf("%q: index rewritten %v, expected %v", args, rewritten, tc.rewrite)
+			}
+			index, err := bsearch.LoadIndex(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !tc.check(index) {
+				t.Errorf("%q: unexpected index %+v", args, index)
+			}
+		})
+	}
+}
+
 // Test that -c/--cat prints the index as YAML and writes no index file
 func TestCmdCat(t *testing.T) {
 	for _, flag := range []string{"-c", "--cat"} {

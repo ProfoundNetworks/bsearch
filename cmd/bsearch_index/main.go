@@ -85,12 +85,17 @@ func main() {
 	// Setup
 	setupLogging(opts.Verbose)
 
-	// Noop if a valid index already exists (unless --force is specified)
+	// Noop if a valid index already exists (unless --force is specified,
+	// or explicit options disagree with it)
 	if !opts.Force && !opts.Cat {
-		_, err = bsearch.LoadIndex(opts.Args.Filename)
+		index, err := bsearch.LoadIndex(opts.Args.Filename)
 		if err == nil {
-			slog.Info("index file found and up to date")
-			os.Exit(0)
+			diffs := optionsDiffer(index, opts)
+			if len(diffs) == 0 {
+				slog.Info("index file found and up to date")
+				os.Exit(0)
+			}
+			slog.Info("index options differ, regenerating", "options", diffs)
 		}
 	}
 
@@ -130,6 +135,25 @@ func main() {
 	if err != nil {
 		die(err.Error())
 	}
+}
+
+// optionsDiffer returns the names of the options explicitly set in o that
+// disagree with index. Options left unset never count as differing.
+func optionsDiffer(index *bsearch.Index, o Options) []string {
+	var diffs []string
+	if o.Header && !index.Header {
+		diffs = append(diffs, "hdr")
+	}
+	if o.NoHeader && index.Header {
+		diffs = append(diffs, "no-hdr")
+	}
+	if o.Delim != "" && o.Delim != string(index.Delimiter) {
+		diffs = append(diffs, "sep")
+	}
+	if o.Blocksize > 0 && o.Blocksize*1024 != index.Blocksize {
+		diffs = append(diffs, "bs")
+	}
+	return diffs
 }
 
 // setupLogging configures the default slog logger to write human-readable
