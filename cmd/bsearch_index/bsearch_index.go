@@ -1,9 +1,11 @@
 /*
 bsearch utility to generate a bsearch index file for a dataset.
 
-The index file is a zstd-compressed yaml file. It has the same name and
-location as the dataset, but with all '.' characters changed to '_', and
-a '.bsx' suffix e.g. the index for `test_foobar.csv` is `test_foobar_csv.bsx`.
+The index file is an uncompressed json+tsv file (a JSON metadata line,
+then one offset<TAB>key line per block). It has the same name and location
+as the dataset, but with all '.' characters changed to '_', and a '.bsy'
+suffix e.g. the index for `test_foobar.csv` is `test_foobar_csv.bsy`.
+With --cat, the index is written to stdout as YAML instead.
 */
 
 package main

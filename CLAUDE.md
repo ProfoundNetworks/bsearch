@@ -60,8 +60,6 @@ The root package has three layers:
   `foo_csv.bsy` (see `IndexPath`).
 - **Format** (`indexVersion = 4`): line 1 is the JSON-encoded `Index` struct
   (with `List` excluded). Each later line is `offset<TAB>strconv.Quote(key)`.
-  The header comment in `cmd/bsearch_index/bsearch_index.go` describes a
-  zstd/yaml `.bsx` format; that comment is outdated.
 - **`NewSearcher` requires an existing index.** `LoadIndex` returns one of
   these errors:
   - `ErrIndexNotFound`
