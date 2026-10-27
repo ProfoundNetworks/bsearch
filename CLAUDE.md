@@ -17,24 +17,16 @@ go test -run TestSearcherLine1 .           # single test in the root package
 go test -v ./cmd/bsearch_index             # one CLI package
 ```
 
-**`cmd/bsearch` tests shell out to a prebuilt `./bsearch` binary** (via
-`exec.Command("bash", "-c", "./bsearch ...")`), and they search
-`testdata/rdns1.csv` without creating its index. So before trusting those
-results:
-
-```bash
-go test .                                  # root tests create/refresh testdata/*.bsy indexes
-(cd cmd/bsearch && go build) && go test ./cmd/bsearch
-```
-
-If you skip the rebuild, the tests run against a stale binary.
+The `cmd/bsearch` tests run the real binary: `TestMain` builds it into a
+temporary directory. Use `indexedCopy` to give a test a dataset; it copies the
+file into that directory and writes a fresh index next to it, so these tests
+never depend on the repo's `testdata/*.bsy` files.
 
 Other scripts: `gotest.sh` runs `go test` per package. `rake test` uses
 `richgo`. `rake selftest` runs `cmd/bsearch_selftest` against the large
 `data/` datasets, which are not in the repo. `benchmark_dgin.sh` pulls a
-dataset from S3. The GitHub workflow (`.github/workflows/test.yaml`) is out of
-date: it pins Go 1.18 and tests only the root package, but `go.mod` requires
-Go 1.25.
+dataset from S3. The GitHub workflow (`.github/workflows/test.yaml`) runs
+`go test -v ./...` and takes its Go version from `go.mod`.
 
 ## Architecture
 

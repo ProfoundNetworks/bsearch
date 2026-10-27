@@ -2,18 +2,85 @@ package main
 
 import (
 	"flag"
+	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ProfoundNetworks/bsearch"
 )
 
 var update *bool
+
+// Set by TestMain
+var (
+	bsearchBin string // freshly built bsearch binary
+	tmpdir     string // scratch dir holding bsearchBin and indexed datasets
+)
 
 func init() {
 	testing.Init()
 	update = flag.Bool("u", false, "update .golden files")
 	flag.Parse()
+}
+
+// TestMain builds bsearch into a temporary directory, so tests never run
+// against a stale ./bsearch binary
+func TestMain(m *testing.M) {
+	var err error
+	tmpdir, err = os.MkdirTemp("", "bsearch_test")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	bsearchBin = filepath.Join(tmpdir, "bsearch")
+	out, err := exec.Command("go", "build", "-o", bsearchBin, ".").CombinedOutput()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "building bsearch: %s\n%s", err, out)
+		os.RemoveAll(tmpdir)
+		os.Exit(1)
+	}
+
+	code := m.Run()
+	os.RemoveAll(tmpdir)
+	os.Exit(code)
+}
+
+// indexedCopy copies the dataset at path into tmpdir and writes a fresh
+// index alongside it, returning the path of the copy
+func indexedCopy(t *testing.T, path string) string {
+	t.Helper()
+	src, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Close()
+
+	dst := filepath.Join(tmpdir, filepath.Base(path))
+	fh, err := os.Create(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(fh, src); err != nil {
+		fh.Close()
+		t.Fatal(err)
+	}
+	if err := fh.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	index, err := bsearch.NewIndex(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := index.Write(); err != nil {
+		t.Fatal(err)
+	}
+	return dst
 }
 
 func TestCmdBsearch(t *testing.T) {
@@ -44,12 +111,12 @@ func TestCmdBsearch(t *testing.T) {
 			"223.252.003.000,223-252-3-0.as45671.net,202003,as45671.net"},
 	}
 
-	infile := filepath.Join("..", "..", "testdata", "rdns1.csv")
+	infile := indexedCopy(t, filepath.Join("..", "..", "testdata", "rdns1.csv"))
 
 	for _, tc := range tests {
-		cmd := "./bsearch " + tc.args + " " + tc.search + " " + infile
+		args := append(strings.Fields(tc.args+" "+tc.search), infile)
 
-		output, err := exec.Command("bash", "-c", cmd).CombinedOutput()
+		output, err := exec.Command(bsearchBin, args...).CombinedOutput()
 		got := strings.TrimSpace(string(output))
 		if err != nil {
 			t.Fatalf("%s: %s", err.Error(), got)
@@ -101,7 +168,7 @@ www.ed1000.ca`},
 	infile := filepath.Join("testdata", "ca_rev.txt")
 
 	for _, tc := range tests {
-		cmd := "./bsearch -r " + tc.args + " " + tc.search + " " + infile
+		cmd := bsearchBin + " -r " + tc.args + " " + tc.search + " " + infile
 
 		output, err := exec.Command("bash", "-c", cmd).CombinedOutput()
 		got := strings.TrimSpace(string(output))
@@ -153,7 +220,7 @@ www.ed1000.ca`},
 	infile := filepath.Join("testdata", "ca_rev_hdr.txt")
 
 	for _, tc := range tests {
-		cmd := "./bsearch -r --hdr " + tc.args + " " + tc.search + " " + infile
+		cmd := bsearchBin + " -r --hdr " + tc.args + " " + tc.search + " " + infile
 
 		output, err := exec.Command("bash", "-c", cmd).CombinedOutput()
 		got := strings.TrimSpace(string(output))
