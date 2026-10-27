@@ -171,3 +171,38 @@ func TestRev(t *testing.T) {
 		}
 	}
 }
+
+// Test that a dataset with no index gives an error pointing at bsearch_index
+func TestMissingIndex(t *testing.T) {
+	infile := filepath.Join(t.TempDir(), "noindex.csv")
+	if err := os.WriteFile(infile, []byte("a,1\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	output, err := exec.Command(bsearchBin, "a", infile).CombinedOutput()
+	got := strings.TrimSpace(string(output))
+	if err == nil {
+		t.Fatalf("expected failure, got success: %s", got)
+	}
+	expect := fmt.Sprintf("Error: no index found for %q - create one with bsearch_index", infile)
+	if got != expect {
+		t.Errorf("got:\n%s\n\nexpected:\n%s\n", got, expect)
+	}
+}
+
+// Test that compressed datasets (including zstd) are rejected up front
+func TestCompressed(t *testing.T) {
+	for _, filename := range []string{"data.csv.gz", "data.csv.zst"} {
+		output, err := exec.Command(bsearchBin, "a", filename).CombinedOutput()
+		got := strings.TrimSpace(string(output))
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok || exitErr.ExitCode() != 2 {
+			t.Errorf("%s: expected exit status 2, got %v: %s", filename, err, got)
+			continue
+		}
+		expect := fmt.Sprintf("Filename %q appears to be compressed - cannot binary search", filename)
+		if got != expect {
+			t.Errorf("%s: got:\n%s\n\nexpected:\n%s\n", filename, got, expect)
+		}
+	}
+}

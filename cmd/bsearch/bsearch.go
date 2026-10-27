@@ -4,6 +4,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -62,7 +63,7 @@ func main() {
 	setupLogging(len(opts.Verbose))
 
 	// Die if Filename looks compressed
-	re := regexp.MustCompile(`\.(gz|bz2|br)$`)
+	re := regexp.MustCompile(`\.(gz|bz2|br|zst)$`)
 	if re.MatchString(opts.Args.Filename) {
 		fmt.Fprintf(os.Stderr, "Filename %q appears to be compressed - cannot binary search\n", opts.Args.Filename)
 		os.Exit(2)
@@ -74,7 +75,10 @@ func main() {
 		o.Logger = slog.Default()
 	}
 	bss, err := bsearch.NewSearcherOptions(opts.Args.Filename, o)
-	if err != nil {
+	if errors.Is(err, bsearch.ErrIndexNotFound) {
+		die(fmt.Sprintf("Error: no index found for %q - create one with bsearch_index",
+			opts.Args.Filename))
+	} else if err != nil {
 		die(err.Error())
 	}
 	if len(opts.Verbose) > 0 {
@@ -135,9 +139,6 @@ func main() {
 	// Search
 	results, err := bss.Lines([]byte(searchStr))
 	if err != nil {
-		if err == bsearch.ErrIndexNotFound {
-			die("Error: compressed dataset without index - recompress using bsearch_compress.")
-		}
 		die("Error: " + err.Error())
 	}
 	for _, l := range results {

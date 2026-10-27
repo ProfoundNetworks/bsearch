@@ -60,15 +60,9 @@ func main() {
 	setupLogging(len(opts.Verbose))
 
 	// Die if Filename looks compressed
-	reCompression := regexp.MustCompile(`\.(gz|bz2|br)$`)
+	reCompression := regexp.MustCompile(`\.(gz|bz2|br|zst)$`)
 	if reCompression.MatchString(opts.Args.Filename) {
 		fmt.Fprintf(os.Stderr, "Filename %q appears to be compressed - cannot binary search\n",
-			opts.Args.Filename)
-		os.Exit(2)
-	}
-	reZstd := regexp.MustCompile(`\.zst$`)
-	if reZstd.MatchString(opts.Args.Filename) {
-		fmt.Fprintf(os.Stderr, "Cannot create index on zstd dataset %q - recompress with bsearch_compress instead\n",
 			opts.Args.Filename)
 		os.Exit(2)
 	}
