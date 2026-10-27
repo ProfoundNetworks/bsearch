@@ -110,11 +110,13 @@ func main() {
 		reader := bufio.NewReader(os.Stdin)
 
 		for {
+			// A final key without a trailing newline comes back with io.EOF
 			lineBytes, err := reader.ReadBytes('\n')
-			if err == io.EOF {
-				break
-			} else if err != nil {
+			if err != nil && err != io.EOF {
 				die(err.Error())
+			}
+			if len(lineBytes) == 0 {
+				break
 			}
 
 			searchStr := strings.Trim(string(lineBytes), "\n")

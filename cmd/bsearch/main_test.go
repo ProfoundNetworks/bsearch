@@ -365,9 +365,6 @@ func TestStdin(t *testing.T) {
 
 // Test that -c reads a final key with no trailing newline
 func TestStdinUnterminatedKey(t *testing.T) {
-	t.Skip("BUG: bsearch -c drops a final stdin key that lacks a trailing newline " +
-		"(ReadBytes returns the data with io.EOF, and the loop breaks before using it)")
-
 	infile := indexedCopy(t, filepath.Join("..", "..", "testdata", "rdns1.csv"),
 		bsearch.IndexOptions{})
 	stdout, stderr, code := runBinStdin(t, strings.NewReader("032.176.184.000"),
