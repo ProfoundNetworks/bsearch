@@ -61,6 +61,7 @@ func TestParserGrammar(t *testing.T) {
 		{[]string{"--sep", ",", "data.csv"}, Options{Delim: ","}},
 		{[]string{"--sep=,", "data.csv"}, Options{Delim: ","}},
 		{[]string{"--hdr", "data.csv"}, Options{Header: true}},
+		{[]string{"--no-hdr", "data.csv"}, Options{NoHeader: true}},
 		{[]string{"-f", "data.csv"}, Options{Force: true}},
 		{[]string{"--force", "data.csv"}, Options{Force: true}},
 		{[]string{"-c", "data.csv"}, Options{Cat: true}},
@@ -89,8 +90,10 @@ func TestParserGrammar(t *testing.T) {
 		})
 	}
 
-	// Filename is required; -H is not a bsearch_index flag; --bs is an int
-	for _, args := range [][]string{{}, {"-H", "data.csv"}, {"-b", "x", "data.csv"}, {"--bogus", "data.csv"}} {
+	// Filename is required; -H is not a bsearch_index flag; --bs is an int;
+	// --hdr and --no-hdr are mutually exclusive
+	for _, args := range [][]string{{}, {"-H", "data.csv"}, {"-b", "x", "data.csv"}, {"--bogus", "data.csv"},
+		{"--hdr", "--no-hdr", "data.csv"}} {
 		var got Options
 		parser, err := newParser(&got)
 		if err != nil {
@@ -132,7 +135,7 @@ func TestCLIFlagConventions(t *testing.T) {
 		}
 	}
 
-	for _, args := range [][]string{{"--bogus"}, {}} {
+	for _, args := range [][]string{{"--bogus"}, {}, {"--hdr", "--no-hdr", "data.csv"}} {
 		stdout, stderr, code := runBin(t, bsearchIndexBin, args...)
 		if code != 2 {
 			t.Errorf("%q: expected exit 2, got %d", args, code)
@@ -694,6 +697,41 @@ func TestCmdSepHeader(t *testing.T) {
 				t.Errorf("List: got %+v, expected one entry with key %q", index.List, tc.firstKey)
 			}
 		})
+	}
+}
+
+// Test that --no-hdr turns an out-of-order second line into a sort
+// violation, where by default the first line is taken as a header
+func TestCmdNoHeader(t *testing.T) {
+	data := []byte("zebra,1\napple,2\nbanana,3\n")
+
+	path := writeTemp(t, "data.csv", data)
+	stdout, stderr, code := runBin(t, bsearchIndexBin, "--no-hdr", path)
+	if code != 1 || stdout != "" {
+		t.Errorf("--no-hdr: got exit %d, stdout %q; expected exit 1, no stdout", code, stdout)
+	}
+	if expect := `key sort violation - "zebra" > "apple"`; !strings.Contains(stderr, expect) {
+		t.Errorf("--no-hdr: expected stderr to contain %q, got %q", expect, stderr)
+	}
+	if _, err := os.Stat(indexPath(t, path)); !os.IsNotExist(err) {
+		t.Errorf("--no-hdr: expected no index file, got stat error %v", err)
+	}
+
+	// Without --no-hdr, -v reports the detected header
+	path = writeTemp(t, "data.csv", data)
+	stdout, stderr, code = runBin(t, bsearchIndexBin, "-v", path)
+	if code != 0 || stdout != "" {
+		t.Errorf("-v: got exit %d, stdout %q", code, stdout)
+	}
+	if !strings.Contains(stderr, "header detected") || !strings.Contains(stderr, "zebra 1") {
+		t.Errorf("-v: expected header detection log, got %q", stderr)
+	}
+	index, err := bsearch.LoadIndex(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !index.Header {
+		t.Errorf("Header: got false, expected true")
 	}
 }
 

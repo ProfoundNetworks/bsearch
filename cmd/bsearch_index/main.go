@@ -31,7 +31,8 @@ import (
 type Options struct {
 	Verbose   int    `short:"v" name:"verbose" type:"counter" help:"display verbose debug output"`
 	Delim     string `short:"t" name:"sep" help:"separator/delimiter character"`
-	Header    bool   `name:"hdr" help:"Filename includes a header, which should be skipped (usually optional)"`
+	Header    bool   `name:"hdr" xor:"hdr" help:"Filename includes a header, which should be skipped (usually optional)"`
+	NoHeader  bool   `name:"no-hdr" xor:"hdr" help:"Filename has no header, so an out-of-order second line is an error"`
 	Force     bool   `short:"f" name:"force" help:"force index generation even if up-to-date"`
 	Cat       bool   `short:"c" name:"cat" help:"write generated index to stdout instead of to file"`
 	Blocksize int    `short:"b" name:"bs" help:"index blocksize (kB, default 2kB)"`
@@ -94,9 +95,10 @@ func main() {
 	}
 
 	// Generate and write index
-	idxopt := bsearch.IndexOptions{Delimiter: []byte(opts.Delim)}
-	if opts.Header {
-		idxopt.Header = true
+	idxopt := bsearch.IndexOptions{
+		Delimiter: []byte(opts.Delim),
+		Header:    opts.Header,
+		NoHeader:  opts.NoHeader,
 	}
 	if opts.Verbose > 0 {
 		idxopt.Logger = slog.Default()

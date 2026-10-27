@@ -40,7 +40,10 @@ The root package has three layers:
   - Detects duplicate keys (`KeysUnique`). When a key spans blocks, the entry
     points back to the key's first occurrence (`KeysIndexFirst`).
   - Auto-detects a header: if only the second line is out of order, it treats
-    the first line as a header and restarts indexing.
+    the first line as a header and restarts indexing. `IndexOptions.Header`
+    forces a header; `IndexOptions.NoHeader` disables detection, so an
+    out-of-order second line is a sort violation. Setting both returns
+    `ErrHeaderConflict`.
 - **`searcher.go`: `Searcher`.** Mmaps the whole data file and loads the
   on-disk index. A lookup does a binary search over `Index.List`
   (`blockEntryLE` if `KeysIndexFirst`, else the more conservative
@@ -96,7 +99,8 @@ use. Keep these kong conventions:
 The `main_test.go` in each tool checks both streams separately.
 
 - `bsearch_index` builds and writes the index. `--cat` dumps it as YAML
-  instead; `-b` sets the blocksize in kB.
+  instead; `-b` sets the blocksize in kB; `--hdr`/`--no-hdr` (mutually
+  exclusive) override header auto-detection.
 - `bsearch` looks up a key in a dataset:
   - `-c/--stdin` does batch lookups and prints a blank line after each key's
     results.

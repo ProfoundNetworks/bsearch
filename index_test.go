@@ -1,10 +1,12 @@
 package bsearch
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -417,6 +419,7 @@ func TestNewIndexSortViolation(t *testing.T) {
 		{"after header", "key,val\na,1\nc,2\nb,3\n", IndexOptions{}},
 		{"after explicit header", "key,val\na,1\nc,2\nb,3\n", IndexOptions{Header: true}},
 		{"later in first block", "a,1\n" + strings.Repeat("b,2\n", 100) + "a,3\n", IndexOptions{}},
+		{"line 2 with NoHeader", "b,1\na,2\nc,3\n", IndexOptions{NoHeader: true}},
 	}
 
 	dir := t.TempDir()
@@ -455,6 +458,47 @@ func TestNewIndexHeaderDetection(t *testing.T) {
 	}
 	if got := idx.List[0]; got.Key != "a" || got.Offset != 8 {
 		t.Errorf("first entry: got %+v, expected {Key:a Offset:8}", got)
+	}
+}
+
+// Test that NoHeader indexes the first line as data, and that it can't be
+// combined with Header
+func TestNewIndexNoHeader(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.csv")
+	if err := os.WriteFile(path, []byte("a,1\nb,2\nc,3\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	idx, err := NewIndexOptions(path, IndexOptions{NoHeader: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idx.Header || idx.HeaderFields != nil {
+		t.Errorf("header: got %v %q, expected none", idx.Header, idx.HeaderFields)
+	}
+	if got := idx.List[0]; got.Key != "a" || got.Offset != 0 {
+		t.Errorf("first entry: got %+v, expected {Key:a Offset:0}", got)
+	}
+
+	_, err = NewIndexOptions(path, IndexOptions{Header: true, NoHeader: true})
+	if !errors.Is(err, ErrHeaderConflict) {
+		t.Errorf("Header+NoHeader: got err %v, expected ErrHeaderConflict", err)
+	}
+}
+
+// Test that header auto-detection is logged at info level
+func TestNewIndexHeaderDetectionLogged(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.csv")
+	if err := os.WriteFile(path, []byte("key,val\na,1\nb,2\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	if _, err := NewIndexOptions(path, IndexOptions{Logger: logger}); err != nil {
+		t.Fatal(err)
+	}
+	if out := buf.String(); !strings.Contains(out, "header detected") ||
+		!strings.Contains(out, "key val") {
+		t.Errorf("expected header detection log with fields, got %q", out)
 	}
 }
 

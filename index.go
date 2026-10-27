@@ -38,6 +38,7 @@ var (
 	ErrIndexExpired      = errors.New("index file out of date")
 	ErrIndexEmpty        = errors.New("index contains no entries")
 	ErrIndexPathMismatch = errors.New("index file path mismatch")
+	ErrHeaderConflict    = errors.New("index options Header and NoHeader are mutually exclusive")
 
 	// maxLineLength is the longest dataset line NewIndex accepts
 	// (a var so tests can lower it)
@@ -47,7 +48,8 @@ var (
 type IndexOptions struct {
 	Blocksize int
 	Delimiter []byte
-	Header    bool
+	Header    bool         // first line is a header (skip it)
+	NoHeader  bool         // first line is data (disables header auto-detection)
 	Logger    *slog.Logger // debug logger
 }
 
@@ -78,6 +80,7 @@ type Index struct {
 	List           []IndexEntry `json:"-"`
 	Version        int
 	HeaderFields   []string     `json:",omitempty"`
+	noHeader       bool         // disables header auto-detection
 	logger         *slog.Logger // debug logger
 }
 
@@ -187,10 +190,13 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 		switch bytes.Compare(prevKey, key) {
 		case 1:
 			// Special case - allow second record out-of-order due to header
-			// FIXME: should we have an option to disallow this?
-			if lineNumber == 2 && !index.Header {
+			// (unless noHeader says the first line is data)
+			if lineNumber == 2 && !index.Header && !index.noHeader {
 				index.Header = true
 				index.HeaderFields = csvSplitBytes(firstLine, string(index.Delimiter))
+				if index.logger != nil {
+					index.logger.Info("header detected", "fields", index.HeaderFields)
+				}
 				// Reset list and blockNumber to restart
 				list = []IndexEntry{}
 				blockNumber = -1
@@ -261,6 +267,9 @@ func NewIndex(path string) (*Index, error) {
 
 // NewIndexOptions creates a new Index for path with delim as the delimiter
 func NewIndexOptions(path string, opt IndexOptions) (*Index, error) {
+	if opt.Header && opt.NoHeader {
+		return nil, ErrHeaderConflict
+	}
 	var err error
 	path, err = filepath.Abs(path)
 	if err != nil {
@@ -301,6 +310,7 @@ func NewIndexOptions(path string, opt IndexOptions) (*Index, error) {
 	index.Filepath = path
 	index.Filename = filepath.Base(path)
 	index.Header = opt.Header
+	index.noHeader = opt.NoHeader
 	index.Version = indexVersion
 	if opt.Logger != nil {
 		index.logger = opt.Logger
