@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -418,5 +419,81 @@ func TestNewSearcherCompressed(t *testing.T) {
 			}
 			t.Errorf("%s: got %v, expected ErrFileCompressed", ext, err)
 		}
+	}
+}
+
+// isMapped reports whether path is currently mmapped by this process
+// (Linux only)
+func isMapped(t *testing.T, path string) bool {
+	t.Helper()
+	maps, err := os.ReadFile("/proc/self/maps")
+	if err != nil {
+		t.Fatal(err)
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Contains(string(maps), abs)
+}
+
+func skipUnlessLinux(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS != "linux" {
+		t.Skip("needs /proc/self")
+	}
+}
+
+// Test that Searcher.Close unmaps the dataset
+func TestSearcherCloseUnmaps(t *testing.T) {
+	skipUnlessLinux(t)
+	path := fixture(t, "foo.csv")
+
+	s, err := NewSearcher(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !isMapped(t, path) {
+		t.Fatalf("%s not mapped after NewSearcher", path)
+	}
+	s.Close()
+	if isMapped(t, path) {
+		t.Errorf("%s still mapped after Close", path)
+	}
+}
+
+// Test that DB.Close unmaps the dataset
+func TestDBCloseUnmaps(t *testing.T) {
+	skipUnlessLinux(t)
+	path := fixture(t, "foo.csv")
+
+	db, err := NewDB(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	if isMapped(t, path) {
+		t.Errorf("%s still mapped after Close", path)
+	}
+}
+
+// Test that a NewSearcher failure (here, a missing index) leaves no open
+// file or mapping behind
+func TestNewSearcherErrorReleases(t *testing.T) {
+	skipUnlessLinux(t)
+	path := filepath.Join(t.TempDir(), "foo.csv")
+	copyFile(t, filepath.Join("testdata", "foo.csv"), path)
+
+	before := openFDs(t)
+	for i := 0; i < 10; i++ {
+		if _, err := NewSearcher(path); err != ErrIndexNotFound {
+			t.Fatalf("got %v, expected ErrIndexNotFound", err)
+		}
+	}
+	if after := openFDs(t); after != before {
+		t.Errorf("open file descriptors went from %d to %d", before, after)
+	}
+	if isMapped(t, path) {
+		t.Errorf("%s still mapped after failed NewSearcher", path)
 	}
 }

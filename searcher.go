@@ -46,7 +46,7 @@ type SearcherOptions struct {
 type Searcher struct {
 	r        io.ReaderAt  // data reader
 	l        int64        // data length
-	mmap     []byte       // data mmap
+	mmap     mmap.MMap    // data mmap
 	filepath string       // filename path
 	Index    *Index       // bsearch index
 	matchLE  bool         // LinePosition uses less-than-or-equal-to match semantics
@@ -107,6 +107,7 @@ func NewSearcherOptions(path string, opt SearcherOptions) (*Searcher, error) {
 	// Mmap file
 	mmap, err := mmap.Map(rdr, mmap.RDONLY, 0)
 	if err != nil {
+		rdr.Close()
 		return nil, err
 	}
 
@@ -124,6 +125,7 @@ func NewSearcherOptions(path string, opt SearcherOptions) (*Searcher, error) {
 	// Load index
 	s.Index, err = LoadIndex(path)
 	if err != nil {
+		s.Close()
 		return nil, err
 	}
 	return &s, nil
@@ -269,8 +271,13 @@ func (s *Searcher) LinesN(key []byte, n int) ([][]byte, error) {
 	return s.scanIndexedLines(key, n)
 }
 
-// Close closes the searcher's reader (if applicable)
+// Close unmaps the searcher's data and closes its reader (if applicable).
+// The searcher must not be used after Close.
 func (s *Searcher) Close() {
+	if s.mmap != nil {
+		s.mmap.Unmap()
+		s.mmap = nil
+	}
 	if closer, ok := s.r.(io.Closer); ok {
 		closer.Close()
 	}

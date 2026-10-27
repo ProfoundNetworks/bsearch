@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"encoding/csv"
 	"fmt"
-	"io"
 )
 
 // DB provides a simple key-value-store-like interface using bsearch.Searcher,
@@ -88,9 +87,7 @@ func (db *DB) GetSlice(key string) ([]string, error) {
 	return s, nil
 }
 
-// Close closes our Searcher's underlying reader (if applicable)
+// Close closes our underlying Searcher
 func (db *DB) Close() {
-	if closer, ok := db.bss.r.(io.Closer); ok {
-		closer.Close()
-	}
+	db.bss.Close()
 }
