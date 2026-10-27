@@ -51,8 +51,8 @@ func TestMain(m *testing.M) {
 }
 
 // indexedCopy copies the dataset at path into tmpdir and writes a fresh
-// index alongside it, returning the path of the copy
-func indexedCopy(t *testing.T, path string) string {
+// index alongside it using opt, returning the path of the copy
+func indexedCopy(t *testing.T, path string, opt bsearch.IndexOptions) string {
 	t.Helper()
 	src, err := os.Open(path)
 	if err != nil {
@@ -73,7 +73,7 @@ func indexedCopy(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 
-	index, err := bsearch.NewIndex(dst)
+	index, err := bsearch.NewIndexOptions(dst, opt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,8 @@ func TestCmdBsearch(t *testing.T) {
 			"223.252.003.000,223-252-3-0.as45671.net,202003,as45671.net"},
 	}
 
-	infile := indexedCopy(t, filepath.Join("..", "..", "testdata", "rdns1.csv"))
+	infile := indexedCopy(t, filepath.Join("..", "..", "testdata", "rdns1.csv"),
+		bsearch.IndexOptions{})
 
 	for _, tc := range tests {
 		args := append(strings.Fields(tc.args+" "+tc.search), infile)
@@ -128,109 +129,54 @@ func TestCmdBsearch(t *testing.T) {
 	}
 }
 
-/*
-// FIXME: these are non-terminated text files - revisit
+// Test --rev on single-column reversed-domain datasets, with and without
+// a header
 func TestRev(t *testing.T) {
 	var tests = []struct {
-		name   string
-		args   string
 		search string
-		expect string
+		expect string // "" means not found
 	}{
-		{"0-0.ca", "0-0.ca", "", `0-0.ca
-www.0-0.ca
-tennis40-0.ca
-webdisk.tennis40-0.ca
-cpanel.tennis40-0.ca
-webmail.tennis40-0.ca
-tennis40-0.com.tennis40-0.ca
-www.tennis40-0.com.tennis40-0.ca
-cpcalendars.tennis40-0.ca
-cpcontacts.tennis40-0.ca
-tennis40-0.net.tennis40-0.ca
-www.tennis40-0.net.tennis40-0.ca`},
-		{"3-2-1-0.ca", "3-2-1-0.ca", "", "3-2-1-0.ca"},
-		{"3-2-1-0.ca -b", "3-2-1-0.ca", "-b", "3-2-1-0.ca"},
-		{"card1000.ca", "card1000.ca", "", "card1000.ca"},
-		{"ed1000.ca", "ed1000.ca", "",
-			`ed1000.ca
-dc-e362ba236494.ed1000.ca
-mail.ed1000.ca
-www.ed1000.ca
-www.fooed1000.ca`},
-		{"ed1000.ca -b", "ed1000.ca", "-b",
-			`ed1000.ca
-dc-e362ba236494.ed1000.ca
-mail.ed1000.ca
-www.ed1000.ca`},
+		{"0-0.ca", "0-0.ca"},
+		{"3-2-1-0.ca", "3-2-1-0.ca"},
+		{"card1000.ca", "card1000.ca"},
+		{"ed1000.ca", "ed1000.ca"},
+		{"www.ed1000.ca", "www.ed1000.ca"},
+		{"fooed1000.ca", ""}, // only www.fooed1000.ca exists
 	}
 
-	infile := filepath.Join("testdata", "ca_rev.txt")
+	datasets := []struct {
+		filename string
+		args     []string
+		header   bool
+	}{
+		{"ca_rev.txt", []string{"-r"}, false},
+		{"ca_rev_hdr.txt", []string{"-r", "--hdr"}, true},
+	}
 
-	for _, tc := range tests {
-		cmd := bsearchBin + " -r " + tc.args + " " + tc.search + " " + infile
+	for _, ds := range datasets {
+		infile := indexedCopy(t, filepath.Join("testdata", ds.filename),
+			bsearch.IndexOptions{Delimiter: []byte(","), Header: ds.header})
 
-		output, err := exec.Command("bash", "-c", cmd).CombinedOutput()
-		got := strings.TrimSpace(string(output))
-		if err != nil {
-			t.Fatalf("%s: %s", err.Error(), got)
-		}
+		for _, tc := range tests {
+			args := append(append([]string{}, ds.args...), tc.search, infile)
+			output, err := exec.Command(bsearchBin, args...).CombinedOutput()
+			got := strings.TrimSpace(string(output))
 
-		if got != tc.expect {
-			t.Errorf("test %q arg test failed:\n\ngot:\n%s\n\nexpected:\n%s\n", tc.name, got, tc.expect)
+			if tc.expect == "" {
+				if err == nil || got != "Error: key not found" {
+					t.Errorf("%s %q: got %q (err %v), expected not found",
+						ds.filename, tc.search, got, err)
+				}
+				continue
+			}
+			if err != nil {
+				t.Errorf("%s %q: %s: %s", ds.filename, tc.search, err.Error(), got)
+				continue
+			}
+			if got != tc.expect {
+				t.Errorf("%s %q: got:\n%s\n\nexpected:\n%s\n",
+					ds.filename, tc.search, got, tc.expect)
+			}
 		}
 	}
 }
-
-func TestRevHeader(t *testing.T) {
-	var tests = []struct {
-		name   string
-		args   string
-		search string
-		expect string
-	}{
-		{"0-0.ca", "0-0.ca", "", `0-0.ca
-www.0-0.ca
-tennis40-0.ca
-webdisk.tennis40-0.ca
-cpanel.tennis40-0.ca
-webmail.tennis40-0.ca
-tennis40-0.com.tennis40-0.ca
-www.tennis40-0.com.tennis40-0.ca
-cpcalendars.tennis40-0.ca
-cpcontacts.tennis40-0.ca
-tennis40-0.net.tennis40-0.ca
-www.tennis40-0.net.tennis40-0.ca`},
-		{"3-2-1-0.ca", "3-2-1-0.ca", "", "3-2-1-0.ca"},
-		{"3-2-1-0.ca -b", "3-2-1-0.ca", "-b", "3-2-1-0.ca"},
-		{"card1000.ca", "card1000.ca", "", "card1000.ca"},
-		{"ed1000.ca", "ed1000.ca", "",
-			`ed1000.ca
-dc-e362ba236494.ed1000.ca
-mail.ed1000.ca
-www.ed1000.ca
-www.fooed1000.ca`},
-		{"ed1000.ca -b", "ed1000.ca", "-b",
-			`ed1000.ca
-dc-e362ba236494.ed1000.ca
-mail.ed1000.ca
-www.ed1000.ca`},
-	}
-
-	infile := filepath.Join("testdata", "ca_rev_hdr.txt")
-
-	for _, tc := range tests {
-		cmd := bsearchBin + " -r --hdr " + tc.args + " " + tc.search + " " + infile
-
-		output, err := exec.Command("bash", "-c", cmd).CombinedOutput()
-		got := strings.TrimSpace(string(output))
-		if err != nil {
-			t.Fatalf("%s: %s", err.Error(), got)
-		}
-
-		if got != tc.expect {
-			t.Errorf("test %q arg test failed:\n\ngot:\n%s\n\nexpected:\n%s\n", tc.name, got, tc.expect)
-		}
-	}
-}
-*/
