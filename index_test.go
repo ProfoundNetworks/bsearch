@@ -1,10 +1,12 @@
 package bsearch
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -29,8 +31,58 @@ func ensureNoIndex(t *testing.T, filename string) {
 	}
 }
 
+// copyFile copies src to dst
+func copyFile(t *testing.T, src, dst string) {
+	t.Helper()
+	in, err := os.Open(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		t.Fatal(err)
+	}
+	if err := out.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// fixture copies testdata/filename and its checked-in index into a temp
+// dir, with the index mtime set after the dataset's so it never looks
+// expired, and returns the path of the copied dataset. Use this rather
+// than ensureIndex for checked-in indexes, which ensureIndex may rewrite.
+func fixture(t *testing.T, filename string) string {
+	t.Helper()
+	src := filepath.Join("testdata", filename)
+	srcIdx, err := IndexPath(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	dst := filepath.Join(dir, filename)
+	dstIdx := filepath.Join(dir, filepath.Base(srcIdx))
+	copyFile(t, src, dst)
+	copyFile(t, srcIdx, dstIdx)
+
+	stat, err := os.Stat(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	later := stat.ModTime().Add(time.Second)
+	if err := os.Chtimes(dstIdx, later, later); err != nil {
+		t.Fatal(err)
+	}
+	return dst
+}
+
 // ensureIndex checks that an appropriate index exists for filename and
-// creates it if not
+// creates it if not (see fixture for checked-in indexes)
 func ensureIndex(t *testing.T, filename string) {
 	t.Helper()
 	path := filepath.Join("testdata", filename)
@@ -115,13 +167,12 @@ func TestLoadIndexV4(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		ensureIndex(t, tc.filename)
-
-		idx, err := LoadIndex(filepath.Join("testdata", tc.filename))
+		idx, err := LoadIndex(fixture(t, tc.filename))
 		if err != nil {
 			t.Fatalf("%s: %s\n", tc.filename, err.Error())
 		}
 
+		assert.Equal(t, 4, idx.Version, tc.filename+" version")
 		assert.Equal(t, tc.filename, idx.Filename, tc.filename+" filename")
 		assert.Equal(t, tc.delim, string(idx.Delimiter), tc.filename+" delimiter")
 		assert.Equal(t, tc.header, idx.Header, tc.filename+" header")
@@ -144,13 +195,12 @@ func TestLoadIndexV3(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		ensureIndex(t, tc.filename)
-
-		idx, err := LoadIndex(filepath.Join("testdata", tc.filename))
+		idx, err := LoadIndex(fixture(t, tc.filename))
 		if err != nil {
 			t.Fatalf("%s: %s\n", tc.filename, err.Error())
 		}
 
+		assert.Equal(t, 3, idx.Version, tc.filename+" version")
 		assert.Equal(t, tc.filename, idx.Filename, tc.filename+" filename")
 		assert.Equal(t, tc.delim, string(idx.Delimiter), tc.filename+" delimiter")
 		assert.Equal(t, tc.header, idx.Header, tc.filename+" header")

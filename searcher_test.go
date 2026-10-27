@@ -99,12 +99,12 @@ func TestSearcherLine3(t *testing.T) {
 		{"zzz.com", ""},
 	}
 
-	ensureIndex(t, "domains2.csv")
+	path := fixture(t, "domains2.csv")
 	o := SearcherOptions{Header: true}
 	/*
 		o.Logger = slog.New(tint.NewHandler(os.Stderr, &tint.Options{Level: slog.LevelDebug}))
 	*/
-	s, err := NewSearcherOptions("testdata/domains2.csv", o)
+	s, err := NewSearcherOptions(path, o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,12 +131,12 @@ func TestSearcherLineFoo(t *testing.T) {
 		{"foo", "foo,2"},
 	}
 
-	ensureIndex(t, "foo.csv")
+	path := fixture(t, "foo.csv")
 	o := SearcherOptions{Header: true}
 	/*
 		o.Logger = slog.New(tint.NewHandler(os.Stderr, &tint.Options{Level: slog.LevelDebug}))
 	*/
-	s, err := NewSearcherOptions("testdata/foo.csv", o)
+	s, err := NewSearcherOptions(path, o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,9 +323,9 @@ func TestSearcherLinesFoo(t *testing.T) {
 		{"foo", 9999, "foo,2", "foo,10000"},
 	}
 
-	ensureIndex(t, "foo.csv")
+	path := fixture(t, "foo.csv")
 	o := SearcherOptions{Header: false}
-	s, err := NewSearcherOptions("testdata/foo.csv", o)
+	s, err := NewSearcherOptions(path, o)
 	if err != nil {
 		t.Fatal(err)
 	}
