@@ -5,11 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
 )
 
 // ensureNoIndex removes any existing index, when we don't want to load
@@ -173,13 +172,27 @@ func TestLoadIndexV4(t *testing.T) {
 			t.Fatalf("%s: %s\n", tc.filename, err.Error())
 		}
 
-		assert.Equal(t, 4, idx.Version, tc.filename+" version")
-		assert.Equal(t, tc.filename, idx.Filename, tc.filename+" filename")
-		assert.Equal(t, tc.delim, string(idx.Delimiter), tc.filename+" delimiter")
-		assert.Equal(t, tc.header, idx.Header, tc.filename+" header")
-		assert.Greater(t, idx.Epoch, int64(0), tc.filename+" epoch")
-		assert.Equal(t, tc.listlen, len(idx.List), tc.filename+" listlen")
-		assert.Equal(t, tc.headerFields, idx.HeaderFields, tc.filename+" headerFields")
+		if idx.Version != 4 {
+			t.Errorf("%s version: got %d, expected %d", tc.filename, idx.Version, 4)
+		}
+		if idx.Filename != tc.filename {
+			t.Errorf("%s filename: got %q, expected %q", tc.filename, idx.Filename, tc.filename)
+		}
+		if string(idx.Delimiter) != tc.delim {
+			t.Errorf("%s delimiter: got %q, expected %q", tc.filename, idx.Delimiter, tc.delim)
+		}
+		if idx.Header != tc.header {
+			t.Errorf("%s header: got %v, expected %v", tc.filename, idx.Header, tc.header)
+		}
+		if idx.Epoch <= 0 {
+			t.Errorf("%s epoch: got %d, expected > 0", tc.filename, idx.Epoch)
+		}
+		if len(idx.List) != tc.listlen {
+			t.Errorf("%s listlen: got %d, expected %d", tc.filename, len(idx.List), tc.listlen)
+		}
+		if !slices.Equal(idx.HeaderFields, tc.headerFields) {
+			t.Errorf("%s headerFields: got %q, expected %q", tc.filename, idx.HeaderFields, tc.headerFields)
+		}
 	}
 }
 
@@ -201,12 +214,24 @@ func TestLoadIndexV3(t *testing.T) {
 			t.Fatalf("%s: %s\n", tc.filename, err.Error())
 		}
 
-		assert.Equal(t, 3, idx.Version, tc.filename+" version")
-		assert.Equal(t, tc.filename, idx.Filename, tc.filename+" filename")
-		assert.Equal(t, tc.delim, string(idx.Delimiter), tc.filename+" delimiter")
-		assert.Equal(t, tc.header, idx.Header, tc.filename+" header")
-		assert.Greater(t, idx.Epoch, int64(0), tc.filename+" epoch")
-		assert.Equal(t, tc.listlen, len(idx.List), tc.filename+" listlen")
+		if idx.Version != 3 {
+			t.Errorf("%s version: got %d, expected %d", tc.filename, idx.Version, 3)
+		}
+		if idx.Filename != tc.filename {
+			t.Errorf("%s filename: got %q, expected %q", tc.filename, idx.Filename, tc.filename)
+		}
+		if string(idx.Delimiter) != tc.delim {
+			t.Errorf("%s delimiter: got %q, expected %q", tc.filename, idx.Delimiter, tc.delim)
+		}
+		if idx.Header != tc.header {
+			t.Errorf("%s header: got %v, expected %v", tc.filename, idx.Header, tc.header)
+		}
+		if idx.Epoch <= 0 {
+			t.Errorf("%s epoch: got %d, expected > 0", tc.filename, idx.Epoch)
+		}
+		if len(idx.List) != tc.listlen {
+			t.Errorf("%s listlen: got %d, expected %d", tc.filename, len(idx.List), tc.listlen)
+		}
 	}
 }
 
@@ -229,11 +254,21 @@ func TestNewIndex(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %s\n", tc.filename, err.Error())
 		}
-		assert.Equal(t, tc.filename, idx.Filename, tc.filename+" filename")
-		assert.Equal(t, tc.delim, string(idx.Delimiter), tc.filename+" delimiter")
-		assert.Equal(t, tc.header, idx.Header, tc.filename+" header")
-		assert.Greater(t, idx.Epoch, int64(0), tc.filename+" epoch")
-		assert.Equal(t, tc.listlen, len(idx.List), tc.filename+" listlen")
+		if idx.Filename != tc.filename {
+			t.Errorf("%s filename: got %q, expected %q", tc.filename, idx.Filename, tc.filename)
+		}
+		if string(idx.Delimiter) != tc.delim {
+			t.Errorf("%s delimiter: got %q, expected %q", tc.filename, idx.Delimiter, tc.delim)
+		}
+		if idx.Header != tc.header {
+			t.Errorf("%s header: got %v, expected %v", tc.filename, idx.Header, tc.header)
+		}
+		if idx.Epoch <= 0 {
+			t.Errorf("%s epoch: got %d, expected > 0", tc.filename, idx.Epoch)
+		}
+		if len(idx.List) != tc.listlen {
+			t.Errorf("%s listlen: got %d, expected %d", tc.filename, len(idx.List), tc.listlen)
+		}
 	}
 }
 
@@ -258,12 +293,24 @@ func TestNewIndexOptions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %s\n", tc.filename, err.Error())
 		}
-		assert.Equal(t, tc.filename, idx.Filename, tc.filename+" filename")
-		assert.Equal(t, tc.delim, string(idx.Delimiter), tc.filename+" delimiter")
-		assert.Equal(t, tc.header, idx.Header, tc.filename+" header")
-		assert.Greater(t, idx.Epoch, int64(0), tc.filename+" epoch")
-		assert.Equal(t, tc.listlen, len(idx.List), tc.filename+" listlen")
-		assert.Equal(t, tc.headerFields, idx.HeaderFields, tc.filename+" headerFields")
+		if idx.Filename != tc.filename {
+			t.Errorf("%s filename: got %q, expected %q", tc.filename, idx.Filename, tc.filename)
+		}
+		if string(idx.Delimiter) != tc.delim {
+			t.Errorf("%s delimiter: got %q, expected %q", tc.filename, idx.Delimiter, tc.delim)
+		}
+		if idx.Header != tc.header {
+			t.Errorf("%s header: got %v, expected %v", tc.filename, idx.Header, tc.header)
+		}
+		if idx.Epoch <= 0 {
+			t.Errorf("%s epoch: got %d, expected > 0", tc.filename, idx.Epoch)
+		}
+		if len(idx.List) != tc.listlen {
+			t.Errorf("%s listlen: got %d, expected %d", tc.filename, len(idx.List), tc.listlen)
+		}
+		if !slices.Equal(idx.HeaderFields, tc.headerFields) {
+			t.Errorf("%s headerFields: got %q, expected %q", tc.filename, idx.HeaderFields, tc.headerFields)
+		}
 	}
 }
 
@@ -292,18 +339,27 @@ func TestIndexBlockEntryLE(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%s: %s\n", dataset, err.Error())
 	}
-	assert.Equal(t, true, idx.KeysIndexFirst, dataset+" KeysIndexFirst")
-	assert.Equal(t, true, idx.KeysUnique, dataset+" KeysUnique")
+	if !idx.KeysIndexFirst {
+		t.Errorf("%s KeysIndexFirst: got %v, expected %v", dataset, idx.KeysIndexFirst, true)
+	}
+	if !idx.KeysUnique {
+		t.Errorf("%s KeysUnique: got %v, expected %v", dataset, idx.KeysUnique, true)
+	}
 
 	for _, tc := range tests {
 		_, entry, err := idx.blockEntryLE([]byte(tc.key))
 		if tc.entryKey == "" {
-			assert.Equal(t, err, ErrNotFound,
-				tc.key+" returns ErrNotFound")
+			if err != ErrNotFound {
+				t.Errorf("%s returns ErrNotFound: got %v, expected %v", tc.key, err, ErrNotFound)
+			}
 			continue
 		}
-		assert.Equal(t, tc.entryKey, entry.Key, tc.key+" entryKey")
-		assert.Equal(t, tc.entryOffset, entry.Offset, tc.key+" entryOffset")
+		if entry.Key != tc.entryKey {
+			t.Errorf("%s entryKey: got %q, expected %q", tc.key, entry.Key, tc.entryKey)
+		}
+		if entry.Offset != tc.entryOffset {
+			t.Errorf("%s entryOffset: got %d, expected %d", tc.key, entry.Offset, tc.entryOffset)
+		}
 	}
 }
 

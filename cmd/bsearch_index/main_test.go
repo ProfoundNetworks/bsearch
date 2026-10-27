@@ -7,11 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/ProfoundNetworks/bsearch"
-	"github.com/stretchr/testify/assert"
 )
 
 // Set by TestMain
@@ -151,16 +151,28 @@ func TestIndexFoo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assert.Equal(t, "foo.csv", index.Filename, "Filename")
+	if index.Filename != "foo.csv" {
+		t.Errorf("Filename: got %q, expected %q", index.Filename, "foo.csv")
+	}
 	if !strings.HasSuffix(index.Filepath, "/testdata/foo.csv") {
 		t.Errorf("foo.csv Filepath %q does not end with %q",
 			index.Filepath, "/testdata/foo.csv")
 	}
-	assert.Equal(t, true, index.Header)
-	assert.Equal(t, true, index.KeysIndexFirst)
-	assert.Equal(t, false, index.KeysUnique)
-	assert.Equal(t, 2, len(index.List))
-	assert.Equal(t, 4, index.Version)
+	if !index.Header {
+		t.Errorf("Header: got %v, expected %v", index.Header, true)
+	}
+	if !index.KeysIndexFirst {
+		t.Errorf("KeysIndexFirst: got %v, expected %v", index.KeysIndexFirst, true)
+	}
+	if index.KeysUnique {
+		t.Errorf("KeysUnique: got %v, expected %v", index.KeysUnique, false)
+	}
+	if len(index.List) != 2 {
+		t.Errorf("len(List): got %d, expected %d", len(index.List), 2)
+	}
+	if index.Version != 4 {
+		t.Errorf("Version: got %d, expected %d", index.Version, 4)
+	}
 
 	fh, err := os.Open("testdata/foo.csv")
 	if err != nil {
@@ -175,7 +187,9 @@ func TestIndexFoo(t *testing.T) {
 			length = index.List[i+1].Offset - e.Offset
 		} else {
 			stat, err := os.Stat(index.Filepath)
-			assert.Nil(t, err)
+			if err != nil {
+				t.Fatalf("stat %q: got error %v, expected nil", index.Filepath, err)
+			}
 			length = stat.Size() - e.Offset
 		}
 
@@ -189,21 +203,29 @@ func TestIndexFoo(t *testing.T) {
 		if int64(bytesread) < length {
 			t.Fatalf("bytesread error reading entry %d - read %d bytes, expected %d\n", i, bytesread, length)
 		}
-		assert.Equal(t, e.Key+string(index.Delimiter), string(buf[:len(e.Key)+1]))
-		assert.Equal(t, "\n", string(buf[len(buf)-1]))
+		if got, expect := string(buf[:len(e.Key)+1]), e.Key+string(index.Delimiter); got != expect {
+			t.Errorf("entry %d block start: got %q, expected %q", i, got, expect)
+		}
+		if got := string(buf[len(buf)-1]); got != "\n" {
+			t.Errorf("entry %d block end: got %q, expected %q", i, got, "\n")
+		}
 
 		// Check the first line
 		if i == 0 {
 			expect := "bar,1"
 			l := len(expect)
-			assert.Equal(t, expect, string(buf[:l]))
+			if got := string(buf[:l]); got != expect {
+				t.Errorf("entry %d first line: got %q, expected %q", i, got, expect)
+			}
 		}
 
 		// Check the last line
 		if i == index.Length-1 {
 			expect := "foo,10000"
 			l := len(expect) + 1
-			assert.Equal(t, expect, string(buf[len(buf)-l:len(buf)-1]))
+			if got := string(buf[len(buf)-l : len(buf)-1]); got != expect {
+				t.Errorf("entry %d last line: got %q, expected %q", i, got, expect)
+			}
 		}
 	}
 
@@ -225,7 +247,9 @@ func TestIndexFoo(t *testing.T) {
 	}
 	// Restore index.Filepath
 	index.Filepath = path
-	assert.Equal(t, index, loaded)
+	if !reflect.DeepEqual(loaded, index) {
+		t.Errorf("loaded index differs from written index:\ngot      %+v\nexpected %+v", loaded, index)
+	}
 }
 
 // Test the index generated for testdata/rir_clc_ipv_range.csv
@@ -238,12 +262,24 @@ func TestIndexRIR(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assert.Equal(t, "rir_clc_ipv_range.csv", filepath.Base(index.Filepath))
-	assert.Equal(t, 2048, index.Blocksize)
-	assert.Equal(t, true, index.KeysIndexFirst)
-	assert.Equal(t, true, index.KeysUnique)
-	assert.Equal(t, 3178, index.Length)
-	assert.Equal(t, 4, index.Version)
+	if filepath.Base(index.Filepath) != "rir_clc_ipv_range.csv" {
+		t.Errorf("Filepath base: got %q, expected %q", filepath.Base(index.Filepath), "rir_clc_ipv_range.csv")
+	}
+	if index.Blocksize != 2048 {
+		t.Errorf("Blocksize: got %d, expected %d", index.Blocksize, 2048)
+	}
+	if !index.KeysIndexFirst {
+		t.Errorf("KeysIndexFirst: got %v, expected %v", index.KeysIndexFirst, true)
+	}
+	if !index.KeysUnique {
+		t.Errorf("KeysUnique: got %v, expected %v", index.KeysUnique, true)
+	}
+	if index.Length != 3178 {
+		t.Errorf("Length: got %d, expected %d", index.Length, 3178)
+	}
+	if index.Version != 4 {
+		t.Errorf("Version: got %d, expected %d", index.Version, 4)
+	}
 
 	fh, err := os.Open("testdata/rir_clc_ipv_range.csv")
 	if err != nil {
@@ -254,14 +290,18 @@ func TestIndexRIR(t *testing.T) {
 	// Iterate over index entries
 	for i, e := range index.List {
 		// All entries should be zero-filled ips
-		assert.Equal(t, 15, len(e.Key), "key length == 15")
+		if len(e.Key) != 15 {
+			t.Errorf("entry %d key length == 15: got %d (%q), expected %d", i, len(e.Key), e.Key, 15)
+		}
 
 		var length int64
 		if i+1 < index.Length {
 			length = index.List[i+1].Offset - e.Offset
 		} else {
 			stat, err := os.Stat(index.Filepath)
-			assert.Nil(t, err)
+			if err != nil {
+				t.Fatalf("stat %q: got error %v, expected nil", index.Filepath, err)
+			}
 			length = stat.Size() - e.Offset
 		}
 
@@ -276,21 +316,29 @@ func TestIndexRIR(t *testing.T) {
 			t.Fatalf("bytesread error reading entry %d - read %d bytes, expected %d\n",
 				i, bytesread, length)
 		}
-		assert.Equal(t, e.Key+string(index.Delimiter), string(buf[:len(e.Key)+1]))
-		assert.Equal(t, "\n", string(buf[len(buf)-1]))
+		if got, expect := string(buf[:len(e.Key)+1]), e.Key+string(index.Delimiter); got != expect {
+			t.Errorf("entry %d block start: got %q, expected %q", i, got, expect)
+		}
+		if got := string(buf[len(buf)-1]); got != "\n" {
+			t.Errorf("entry %d block end: got %q, expected %q", i, got, "\n")
+		}
 
 		// Check the first line
 		if i == 0 {
 			expect := "000.000.000.000,000.255.255.000,,IANA,RESERVED"
 			l := len(expect)
-			assert.Equal(t, expect, string(buf[:l]))
+			if got := string(buf[:l]); got != expect {
+				t.Errorf("entry %d first line: got %q, expected %q", i, got, expect)
+			}
 		}
 
 		// Check the last line
 		if i == index.Length-1 {
 			expect := "224.000.000.000,255.255.255.000,,IANA,RESERVED"
 			l := len(expect) + 1
-			assert.Equal(t, expect, string(buf[len(buf)-l:len(buf)-1]))
+			if got := string(buf[len(buf)-l : len(buf)-1]); got != expect {
+				t.Errorf("entry %d last line: got %q, expected %q", i, got, expect)
+			}
 		}
 	}
 }
@@ -306,13 +354,27 @@ func TestIndexRIRHeader(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assert.Equal(t, "rir_clc_ipv_range.csv", filepath.Base(index.Filepath))
-	assert.Equal(t, 2048, index.Blocksize)
-	assert.Equal(t, true, index.Header)
-	assert.Equal(t, true, index.KeysIndexFirst)
-	assert.Equal(t, true, index.KeysUnique)
-	assert.Equal(t, 3178, index.Length)
-	assert.Equal(t, 4, index.Version)
+	if filepath.Base(index.Filepath) != "rir_clc_ipv_range.csv" {
+		t.Errorf("Filepath base: got %q, expected %q", filepath.Base(index.Filepath), "rir_clc_ipv_range.csv")
+	}
+	if index.Blocksize != 2048 {
+		t.Errorf("Blocksize: got %d, expected %d", index.Blocksize, 2048)
+	}
+	if !index.Header {
+		t.Errorf("Header: got %v, expected %v", index.Header, true)
+	}
+	if !index.KeysIndexFirst {
+		t.Errorf("KeysIndexFirst: got %v, expected %v", index.KeysIndexFirst, true)
+	}
+	if !index.KeysUnique {
+		t.Errorf("KeysUnique: got %v, expected %v", index.KeysUnique, true)
+	}
+	if index.Length != 3178 {
+		t.Errorf("Length: got %d, expected %d", index.Length, 3178)
+	}
+	if index.Version != 4 {
+		t.Errorf("Version: got %d, expected %d", index.Version, 4)
+	}
 
 	fh, err := os.Open("testdata/rir_clc_ipv_range.csv")
 	if err != nil {
@@ -323,14 +385,18 @@ func TestIndexRIRHeader(t *testing.T) {
 	// Iterate over index entries
 	for i, e := range index.List {
 		// All entries should be zero-filled ips
-		assert.Equal(t, 15, len(e.Key), "key length == 15")
+		if len(e.Key) != 15 {
+			t.Errorf("entry %d key length == 15: got %d (%q), expected %d", i, len(e.Key), e.Key, 15)
+		}
 
 		var length int64
 		if i+1 < index.Length {
 			length = index.List[i+1].Offset - e.Offset
 		} else {
 			stat, err := os.Stat(index.Filepath)
-			assert.Nil(t, err)
+			if err != nil {
+				t.Fatalf("stat %q: got error %v, expected nil", index.Filepath, err)
+			}
 			length = stat.Size() - e.Offset
 		}
 
@@ -345,21 +411,29 @@ func TestIndexRIRHeader(t *testing.T) {
 			t.Fatalf("bytesread error reading entry %d - read %d bytes, expected %d\n",
 				i, bytesread, length)
 		}
-		assert.Equal(t, e.Key+string(index.Delimiter), string(buf[:len(e.Key)+1]))
-		assert.Equal(t, "\n", string(buf[len(buf)-1]))
+		if got, expect := string(buf[:len(e.Key)+1]), e.Key+string(index.Delimiter); got != expect {
+			t.Errorf("entry %d block start: got %q, expected %q", i, got, expect)
+		}
+		if got := string(buf[len(buf)-1]); got != "\n" {
+			t.Errorf("entry %d block end: got %q, expected %q", i, got, "\n")
+		}
 
 		// Check the first line (skipping the 'header')
 		if i == 0 {
 			expect := "001.000.000.000,001.000.000.000,AU,APNIC,ASSIGNED"
 			l := len(expect)
-			assert.Equal(t, expect, string(buf[:l]))
+			if got := string(buf[:l]); got != expect {
+				t.Errorf("entry %d first line: got %q, expected %q", i, got, expect)
+			}
 		}
 
 		// Check the last line
 		if i == index.Length-1 {
 			expect := "224.000.000.000,255.255.255.000,,IANA,RESERVED"
 			l := len(expect) + 1
-			assert.Equal(t, expect, string(buf[len(buf)-l:len(buf)-1]))
+			if got := string(buf[len(buf)-l : len(buf)-1]); got != expect {
+				t.Errorf("entry %d last line: got %q, expected %q", i, got, expect)
+			}
 		}
 	}
 }

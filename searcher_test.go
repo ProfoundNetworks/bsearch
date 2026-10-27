@@ -7,12 +7,9 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-
 	//"log/slog"
 	//"os"
-
 	//"github.com/lmittmann/tint"
-	"github.com/stretchr/testify/assert"
 )
 
 // Test Searcher.Line() using testdata/rdns1.csv, existing keys
@@ -160,7 +157,9 @@ func TestSearcherLine3(t *testing.T) {
 				t.Fatalf("%s: %s\n", tc.key, err.Error())
 			}
 		}
-		assert.Equal(t, tc.expect, string(line), tc.key)
+		if string(line) != tc.expect {
+			t.Errorf("%s: got %q, expected %q", tc.key, line, tc.expect)
+		}
 	}
 }
 
@@ -187,8 +186,12 @@ func TestSearcherLineFoo(t *testing.T) {
 
 	for _, tc := range tests {
 		line, err := s.Line([]byte(tc.key))
-		assert.Nil(t, err)
-		assert.Equal(t, tc.expect, string(line), tc.key)
+		if err != nil {
+			t.Errorf("%s: got error %v, expected nil", tc.key, err)
+		}
+		if string(line) != tc.expect {
+			t.Errorf("%s: got %q, expected %q", tc.key, line, tc.expect)
+		}
 	}
 }
 
@@ -376,11 +379,18 @@ func TestSearcherLinesFoo(t *testing.T) {
 
 	for _, tc := range tests {
 		lines, err := s.Lines([]byte(tc.key))
-		assert.Nil(t, err)
-		assert.Equal(t, tc.count, len(lines), tc.key+" line count")
-		assert.Equal(t, tc.first_line, string(lines[0]), tc.key+" first_line")
-		assert.Equal(t, tc.last_line, string(lines[len(lines)-1]),
-			tc.key+" last_line")
+		if err != nil {
+			t.Fatalf("%s: got error %v, expected nil", tc.key, err)
+		}
+		if len(lines) != tc.count {
+			t.Fatalf("%s line count: got %d, expected %d", tc.key, len(lines), tc.count)
+		}
+		if string(lines[0]) != tc.first_line {
+			t.Errorf("%s first_line: got %q, expected %q", tc.key, lines[0], tc.first_line)
+		}
+		if string(lines[len(lines)-1]) != tc.last_line {
+			t.Errorf("%s last_line: got %q, expected %q", tc.key, lines[len(lines)-1], tc.last_line)
+		}
 	}
 }
 
