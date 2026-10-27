@@ -673,17 +673,21 @@ func lineNoPanic(s *Searcher, key []byte) (line []byte, err error) {
 // Test that a corrupt index that LoadIndex parses gives an error, either
 // from NewSearcher or from the lookup, rather than a panic
 func TestSearcherCorruptIndex(t *testing.T) {
-	t.Skip("BUG: LoadIndex accepts an index with no entries or with offsets " +
-		"beyond the dataset, and Line then panics indexing Index.List or " +
-		"slicing the mmap")
-
 	var tests = []struct {
 		name   string
 		length int
 		body   string
+		expect string // error prefix, or "" for ErrIndexEmpty
 	}{
-		{"no entries", 0, ""},
-		{"offset past end of dataset", 1, "1000\t\"a\"\n"},
+		{"no entries", 0, "", ""},
+		{"offset past end of dataset", 1, "1000\t\"a\"\n",
+			"malformed index: line 1 offset 1000 is outside the dataset"},
+		{"negative offset", 1, "-1\t\"a\"\n",
+			"malformed index: line 1 offset -1 is outside the dataset"},
+		{"offsets out of order", 2, "4\t\"b\"\n0\t\"a\"\n",
+			"malformed index: line 2 offset 0 is less than the previous offset 4"},
+		{"keys out of order", 2, "0\t\"b\"\n4\t\"a\"\n",
+			"malformed index: line 2 key \"a\" sorts before the previous key \"b\""},
 	}
 
 	for _, tc := range tests {
@@ -693,14 +697,19 @@ func TestSearcherCorruptIndex(t *testing.T) {
 		writeIndex(t, path, header, tc.body)
 
 		s, err := NewSearcher(path)
-		if err != nil {
+		if err == nil {
+			_, lerr := lineNoPanic(s, []byte("b"))
+			s.Close()
+			t.Errorf("%s: NewSearcher succeeded (then Line gave %v), expected an error",
+				tc.name, lerr)
 			continue
 		}
-		_, err = lineNoPanic(s, []byte("b"))
-		if err == nil || strings.HasPrefix(err.Error(), "panic: ") {
-			t.Errorf("%s: got error %v from Line, expected an error and no panic",
-				tc.name, err)
+		if tc.expect == "" {
+			if err != ErrIndexEmpty {
+				t.Errorf("%s: got %v, expected ErrIndexEmpty", tc.name, err)
+			}
+		} else if !strings.HasPrefix(err.Error(), tc.expect) {
+			t.Errorf("%s: got %q, expected prefix %q", tc.name, err, tc.expect)
 		}
-		s.Close()
 	}
 }

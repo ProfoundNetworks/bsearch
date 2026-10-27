@@ -395,6 +395,17 @@ func LoadIndex(path string) (*Index, error) {
 		index.Version = 1
 	}
 
+	// Validate entries as we read them, since a corrupt index that still
+	// parses would otherwise make lookups panic or return junk
+	if index.Length <= 0 {
+		return nil, ErrIndexEmpty
+	}
+	stat, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	datasize := stat.Size()
+
 	for counter := 0; counter < index.Length; counter++ {
 		line, err := reader.ReadString(recordSeparator)
 		lineNum := counter + 1
@@ -414,6 +425,21 @@ func LoadIndex(path string) (*Index, error) {
 		key, err := strconv.Unquote(pair[1])
 		if err != nil {
 			return nil, fmt.Errorf("malformed index: line %d contains a bad key: %w", lineNum, err)
+		}
+		if offset < 0 || offset >= datasize {
+			return nil, fmt.Errorf("malformed index: line %d offset %d is outside the dataset (%d bytes)",
+				lineNum, offset, datasize)
+		}
+		if n := len(index.List); n > 0 {
+			prev := index.List[n-1]
+			if offset < prev.Offset {
+				return nil, fmt.Errorf("malformed index: line %d offset %d is less than the previous offset %d",
+					lineNum, offset, prev.Offset)
+			}
+			if key < prev.Key {
+				return nil, fmt.Errorf("malformed index: line %d key %q sorts before the previous key %q",
+					lineNum, key, prev.Key)
+			}
 		}
 		index.List = append(index.List, IndexEntry{Key: key, Offset: offset})
 	}
