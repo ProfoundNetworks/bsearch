@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ProfoundNetworks/bsearch"
 )
@@ -450,6 +451,23 @@ func TestVerbose(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Test that a stale index is reported rather than used
+func TestStaleIndex(t *testing.T) {
+	infile := indexedCopy(t, filepath.Join("..", "..", "testdata", "rdns1.csv"),
+		bsearch.IndexOptions{})
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(infile, later, later); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, code := runBin(t, bsearchBin, "001.000.128.000", infile)
+	if code != 1 || stdout != "" {
+		t.Errorf("got exit %d, stdout %q; expected exit 1 and no output", code, stdout)
+	}
+	if !strings.Contains(stderr, "index file out of date") {
+		t.Errorf("expected stderr to report a stale index, got %q", stderr)
 	}
 }
 

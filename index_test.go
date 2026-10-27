@@ -898,3 +898,30 @@ func TestNewIndexHeaderQuotes(t *testing.T) {
 		}
 	}
 }
+
+// Test that Index.Write reports a failure to create the index file
+func TestIndexWriteFails(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "data.csv")
+	if err := os.WriteFile(path, []byte("a,1\nb,2\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	idx, err := NewIndex(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0555); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(dir, 0755)
+
+	if err := idx.Write(); !errors.Is(err, os.ErrPermission) {
+		t.Errorf("got %v, expected a permission error", err)
+	}
+	if _, err := LoadIndex(path); err != ErrIndexNotFound {
+		t.Errorf("after failed Write, LoadIndex got %v, expected ErrIndexNotFound", err)
+	}
+}

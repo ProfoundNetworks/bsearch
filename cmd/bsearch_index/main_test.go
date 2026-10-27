@@ -758,3 +758,27 @@ func TestCmdVerbose(t *testing.T) {
 		}
 	}
 }
+
+// Test that a failure to write the index exits 1 and leaves no index
+func TestCmdWriteFails(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	path := writeTemp(t, "data.csv", []byte("a,1\nb,2\n"))
+	dir := filepath.Dir(path)
+	if err := os.Chmod(dir, 0555); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(dir, 0755)
+
+	stdout, stderr, code := runBin(t, bsearchIndexBin, path)
+	if code != 1 || stdout != "" {
+		t.Errorf("got exit %d, stdout %q; expected exit 1 and no output", code, stdout)
+	}
+	if !strings.Contains(stderr, "permission denied") {
+		t.Errorf("expected a permission error on stderr, got %q", stderr)
+	}
+	if _, err := os.Stat(indexPath(t, path)); !os.IsNotExist(err) {
+		t.Errorf("expected no index file, got stat error %v", err)
+	}
+}
