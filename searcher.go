@@ -29,7 +29,7 @@ var (
 	ErrKeyExceedsBlocksize = errors.New("key length exceeds blocksize")
 	ErrUnknownDelimiter    = errors.New("cannot guess delimiter from filename")
 
-	reCompressedUnsupported = regexp.MustCompile(`\.(zst|gz|bz2|xz|zip)$`)
+	reCompressedUnsupported = regexp.MustCompile(`\.(zst|gz|bz2|br|xz|zip)$`)
 )
 
 // SearcherOptions struct for use with NewSearcherOptions
@@ -92,6 +92,9 @@ func NewSearcherOptions(path string, opt SearcherOptions) (*Searcher, error) {
 	}
 	if stat.IsDir() {
 		return nil, ErrNotFile
+	}
+	if reCompressedUnsupported.MatchString(path) {
+		return nil, ErrFileCompressed
 	}
 	filesize := stat.Size()
 

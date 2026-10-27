@@ -11,9 +11,9 @@ With --cat, the index is written to stdout as YAML instead.
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
-	"regexp"
 
 	"log/slog"
 
@@ -59,14 +59,6 @@ func main() {
 	// Setup
 	setupLogging(len(opts.Verbose))
 
-	// Die if Filename looks compressed
-	reCompression := regexp.MustCompile(`\.(gz|bz2|br|zst)$`)
-	if reCompression.MatchString(opts.Args.Filename) {
-		fmt.Fprintf(os.Stderr, "Filename %q appears to be compressed - cannot binary search\n",
-			opts.Args.Filename)
-		os.Exit(2)
-	}
-
 	// Noop if a valid index already exists (unless --force is specified)
 	if !opts.Force && !opts.Cat {
 		_, err = bsearch.LoadIndex(opts.Args.Filename)
@@ -88,7 +80,11 @@ func main() {
 		idxopt.Blocksize = opts.Blocksize * 1024
 	}
 	index, err := bsearch.NewIndexOptions(opts.Args.Filename, idxopt)
-	if err != nil {
+	if errors.Is(err, bsearch.ErrFileCompressed) {
+		fmt.Fprintf(os.Stderr, "Filename %q appears to be compressed - cannot binary search\n",
+			opts.Args.Filename)
+		os.Exit(2)
+	} else if err != nil {
 		die(err.Error())
 	}
 

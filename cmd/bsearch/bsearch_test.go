@@ -192,7 +192,12 @@ func TestMissingIndex(t *testing.T) {
 
 // Test that compressed datasets (including zstd) are rejected up front
 func TestCompressed(t *testing.T) {
+	dir := t.TempDir()
 	for _, filename := range []string{"data.csv.gz", "data.csv.zst"} {
+		filename = filepath.Join(dir, filename)
+		if err := os.WriteFile(filename, []byte("a,1\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
 		output, err := exec.Command(bsearchBin, "a", filename).CombinedOutput()
 		got := strings.TrimSpace(string(output))
 		exitErr, ok := err.(*exec.ExitError)

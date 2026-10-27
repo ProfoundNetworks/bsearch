@@ -266,11 +266,14 @@ func NewIndexOptions(path string, opt IndexOptions) (*Index, error) {
 	if err != nil {
 		return nil, err
 	}
-	reader, err := os.Open(path)
+	epoch, err := epoch(path)
 	if err != nil {
 		return nil, err
 	}
-	epoch, err := epoch(path)
+	if reCompressedUnsupported.MatchString(path) {
+		return nil, ErrFileCompressed
+	}
+	reader, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}

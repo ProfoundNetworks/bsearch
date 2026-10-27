@@ -70,8 +70,11 @@ The root package has three layers:
   valid if the dataset and index move together. `LoadIndex` still accepts
   older indexes that stored `Filepath`.
 - **Delimiter:** inferred from the file extension (`.csv`, `.psv`, `.tsv`,
-  optionally with `.zst`) unless set in `IndexOptions.Delimiter`. Compressed
-  files can't be searched.
+  optionally with `.zst`) unless set in `IndexOptions.Delimiter`.
+- **Compressed datasets** (by extension: `.gz`, `.bz2`, `.br`, `.xz`, `.zip`,
+  `.zst`) are rejected by both `NewSearcherOptions` and `NewIndexOptions`
+  with `ErrFileCompressed`. The CLIs turn that error into their
+  "appears to be compressed" message.
 - **Changing the on-disk format** means bumping `indexVersion` and keeping
   `LoadIndex` backward compatible.
 

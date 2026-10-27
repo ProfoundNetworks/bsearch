@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"regexp"
 	"strings"
 
 	"log/slog"
@@ -62,23 +61,20 @@ func main() {
 	// Setup
 	setupLogging(len(opts.Verbose))
 
-	// Die if Filename looks compressed
-	re := regexp.MustCompile(`\.(gz|bz2|br|zst)$`)
-	if re.MatchString(opts.Args.Filename) {
-		fmt.Fprintf(os.Stderr, "Filename %q appears to be compressed - cannot binary search\n", opts.Args.Filename)
-		os.Exit(2)
-	}
-
 	// Instantiate searcher
 	o := bsearch.SearcherOptions{Header: opts.Header}
 	if len(opts.Verbose) > 0 {
 		o.Logger = slog.Default()
 	}
 	bss, err := bsearch.NewSearcherOptions(opts.Args.Filename, o)
-	if errors.Is(err, bsearch.ErrIndexNotFound) {
+	switch {
+	case errors.Is(err, bsearch.ErrFileCompressed):
+		fmt.Fprintf(os.Stderr, "Filename %q appears to be compressed - cannot binary search\n", opts.Args.Filename)
+		os.Exit(2)
+	case errors.Is(err, bsearch.ErrIndexNotFound):
 		die(fmt.Sprintf("Error: no index found for %q - create one with bsearch_index",
 			opts.Args.Filename))
-	} else if err != nil {
+	case err != nil:
 		die(err.Error())
 	}
 	if len(opts.Verbose) > 0 {

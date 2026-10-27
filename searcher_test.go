@@ -2,6 +2,8 @@ package bsearch
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -397,6 +399,24 @@ func BenchmarkSearcherLines(b *testing.B) {
 		}
 		if len(lines) != 6 {
 			b.Fatal(fmt.Errorf("Lines returned %d results, expected 6\n", len(lines)))
+		}
+	}
+}
+
+// Test that NewSearcher rejects compressed datasets
+func TestNewSearcherCompressed(t *testing.T) {
+	dir := t.TempDir()
+	for _, ext := range []string{"gz", "bz2", "br", "xz", "zip", "zst"} {
+		path := filepath.Join(dir, "data.csv."+ext)
+		if err := os.WriteFile(path, []byte("a,1\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		s, err := NewSearcher(path)
+		if err != ErrFileCompressed {
+			if s != nil {
+				s.Close()
+			}
+			t.Errorf("%s: got %v, expected ErrFileCompressed", ext, err)
 		}
 	}
 }

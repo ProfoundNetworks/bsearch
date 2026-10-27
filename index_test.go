@@ -305,3 +305,17 @@ func TestIndexBlockEntryLE(t *testing.T) {
 		assert.Equal(t, tc.entryOffset, entry.Offset, tc.key+" entryOffset")
 	}
 }
+
+// Test that NewIndex rejects compressed datasets
+func TestNewIndexCompressed(t *testing.T) {
+	dir := t.TempDir()
+	for _, ext := range []string{"gz", "bz2", "br", "xz", "zip", "zst"} {
+		path := filepath.Join(dir, "data.csv."+ext)
+		if err := os.WriteFile(path, []byte("a,1\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := NewIndex(path); err != ErrFileCompressed {
+			t.Errorf("%s: got %v, expected ErrFileCompressed", ext, err)
+		}
+	}
+}
