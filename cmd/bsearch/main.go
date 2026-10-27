@@ -54,12 +54,6 @@ func exitOnUsageError(code int) {
 	os.Exit(code)
 }
 
-func vprintf(format string, args ...interface{}) {
-	if opts.Verbose > 1 {
-		fmt.Fprintf(os.Stderr, format, args...)
-	}
-}
-
 func die(msg string) {
 	fmt.Fprintln(os.Stderr, msg)
 	os.Exit(1)
