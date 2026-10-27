@@ -462,57 +462,6 @@ func (i *Index) blockEntryLE(key []byte) (int, IndexEntry, error) {
 	return begin, list[begin], nil
 }
 
-// blockEntryLT does a binary search on the block entries in the index
-// List and returns the last entry with a Key less-than key, and its
-// position in the List.
-// FIXME: If no such entry exists, it returns the first entry.
-// (This matches the old Searcher.BlockPosition semantics, which were
-// conservative because the first block may include a header.)
-func (i *Index) blockEntryLT(key []byte) (int, IndexEntry) {
-	var begin, mid, end int
-	list := i.List
-	begin = 0
-	end = len(list) - 1
-
-	/* FIXME: this is wrong now we're assuming key semantics, right?
-	// Trim trailing delimiter
-	if bytes.HasSuffix(key, i.Delimiter) {
-		key = bytes.TrimSuffix(key, i.Delimiter)
-	}
-	*/
-
-	for end-begin > 0 {
-		mid = ((end - begin) / 2) + begin
-		// If mid == begin, skip to next
-		if mid == begin {
-			mid++
-		}
-		//fmt.Fprintf(os.Stderr, "+ %s: begin %d, end %d, mid %d\n", string(b), begin, end, mid)
-
-		cmp := prefixCompare([]byte(list[mid].Key), key)
-		//fmt.Fprintf(os.Stderr, "+ %s: [%d] comparing vs. %q, cmp %d\n", string(b), mid, list[mid].Key, cmp)
-		if cmp == -1 {
-			begin = mid
-		} else {
-			if end == mid {
-				break
-			}
-			end = mid
-		}
-	}
-
-	return begin, list[begin]
-}
-
-// blockEntryN returns the nth IndexEntry in index.List, and an ok flag,
-// which is false if no Nth entry exists.
-func (i *Index) blockEntryN(n int) (IndexEntry, bool) {
-	if n < 0 || n >= len(i.List) {
-		return IndexEntry{}, false
-	}
-	return i.List[n], true
-}
-
 // Write writes the index to disk
 func (i *Index) Write() error {
 	filedir := filepath.Dir(i.Filepath)

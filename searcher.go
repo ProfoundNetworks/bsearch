@@ -191,30 +191,19 @@ func hasKey(buf, key, keyde []byte) bool {
 func (s *Searcher) scanIndexedLines(key []byte, n int) ([][]byte, error) {
 	var lines [][]byte
 	var entry IndexEntry
-	var e int
-	var err error
-	if s.Index.KeysIndexFirst {
-		// If index entries always have the first instance of a key, we
-		// can use the more efficient less-than-or-equal-to block lookup
-		e, entry, err = s.Index.blockEntryLE(key)
-		if err != nil {
-			return lines, err
-		}
-	} else {
-		e, entry = s.Index.blockEntryLT(key)
+	// Index entries always hold the first instance of a key (KeysIndexFirst
+	// has been set on every index since 2021), so we can use the
+	// less-than-or-equal-to block lookup
+	e, entry, err := s.Index.blockEntryLE(key)
+	if err != nil {
+		return lines, err
 	}
 	if s.logger != nil {
-		blockEntry := "blockEntryLT"
-		if s.Index.KeysIndexFirst {
-			blockEntry = "blockEntryLE"
-		}
-		s.logger.Debug("scanIndexedLines blockEntryXX returned",
+		s.logger.Debug("scanIndexedLines blockEntryLE returned",
 			"key", string(key),
 			"entryIndex", e,
 			"entry.Key", entry.Key,
-			"entry.Offset", entry.Offset,
-			//"entry.Length", entry.Length,
-			"blockEntry", blockEntry)
+			"entry.Offset", entry.Offset)
 	}
 
 	lines = s.scanLinesWithKey(s.mmap[entry.Offset:], key, n)
@@ -267,22 +256,6 @@ func (s *Searcher) Close() {
 	if closer, ok := s.r.(io.Closer); ok {
 		closer.Close()
 	}
-}
-
-// prefixCompare compares the initial sequence of bufa matches b
-// (up to len(b) only).
-func prefixCompare(bufa, b []byte) int {
-	// If len(bufa) < len(b) we compare up to len(bufa), but disallow equality
-	if len(bufa) < len(b) {
-		cmp := bytes.Compare(bufa, b[:len(bufa)])
-		if cmp == 0 {
-			// An equal match here is short, so actually a less than
-			return -1
-		}
-		return cmp
-	}
-
-	return bytes.Compare(bufa[:len(b)], b)
 }
 
 // clonebs returns a copy of the given byte slice
