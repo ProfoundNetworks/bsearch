@@ -738,3 +738,23 @@ func TestCmdErrors(t *testing.T) {
 		})
 	}
 }
+
+// Test that -v logs progress and -vv adds per-line debug output
+func TestCmdVerbose(t *testing.T) {
+	for _, tc := range []struct {
+		flag  string
+		debug bool
+	}{{"-v", false}, {"-vv", true}} {
+		path := writeTemp(t, "data.csv", []byte("a,1\nb,2\n"))
+		stdout, stderr, code := runBin(t, bsearchIndexBin, tc.flag, path)
+		if code != 0 || stdout != "" {
+			t.Errorf("%s: got exit %d, stdout %q", tc.flag, code, stdout)
+		}
+		if got := strings.Contains(stderr, "generateLineIndex loop"); got != tc.debug {
+			t.Errorf("%s: debug output %v, expected %v; stderr %q", tc.flag, got, tc.debug, stderr)
+		}
+		if strings.Contains(stderr, "\x1b[") {
+			t.Errorf("%s: expected no colour codes when stderr isn't a terminal, got %q", tc.flag, stderr)
+		}
+	}
+}

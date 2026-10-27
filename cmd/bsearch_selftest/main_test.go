@@ -432,3 +432,17 @@ func TestSelftestIndexDelimiter(t *testing.T) {
 		bsearch.IndexOptions{Delimiter: []byte(",")})
 	checkRun(t, nil, "ok 1 aa\nok 2 bb\n", path)
 }
+
+// Test that -v logs the separator in use
+func TestSelftestVerbose(t *testing.T) {
+	path, _ := indexedTemp(t, "data.psv", []byte("a|1\nb|2\n"))
+	for _, flag := range []string{"-v", "-vv"} {
+		stdout, stderr, code := runBin(t, bsearchSelftestBin, flag, path)
+		if code != 0 || stdout != "ok 1 a\nok 2 b\n" {
+			t.Errorf("%s: got exit %d, stdout %q", flag, code, stdout)
+		}
+		if !strings.Contains(stderr, "sep=|") {
+			t.Errorf("%s: expected stderr to log sep=|, got %q", flag, stderr)
+		}
+	}
+}

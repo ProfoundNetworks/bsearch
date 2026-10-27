@@ -452,3 +452,16 @@ func TestVerbose(t *testing.T) {
 		})
 	}
 }
+
+// Test that log output isn't coloured when stderr isn't a terminal
+func TestVerboseNoColour(t *testing.T) {
+	infile := indexedCopy(t, filepath.Join("..", "..", "testdata", "rdns1.csv"),
+		bsearch.IndexOptions{})
+	_, stderr, code := runBin(t, bsearchBin, "-vv", "001.000.128.000", infile)
+	if code != 0 || !strings.Contains(stderr, "using index") {
+		t.Fatalf("got exit %d, stderr %q", code, stderr)
+	}
+	if strings.Contains(stderr, "\x1b[") {
+		t.Errorf("expected no colour codes, got %q", stderr)
+	}
+}

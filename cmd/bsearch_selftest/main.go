@@ -16,6 +16,7 @@ import (
 	"github.com/alecthomas/kong"
 	helpcolours "github.com/gavincarr/kong-help-colours"
 	"github.com/lmittmann/tint"
+	"golang.org/x/term"
 )
 
 // Options. Every field carries an explicit name: tag, so kong never derives
@@ -218,8 +219,11 @@ func setupLogging(verbosity int) {
 	default:
 		level = slog.LevelDebug
 	}
+	// Colour only for a terminal, so redirected logs stay plain text
+	noColour := os.Getenv("NO_COLOR") != "" || !term.IsTerminal(int(os.Stderr.Fd()))
 	slog.SetDefault(slog.New(tint.NewTextHandler(os.Stderr, &tint.Options{
 		Level:      level,
 		TimeFormat: "15:04:05.000",
+		NoColor:    noColour,
 	})))
 }
