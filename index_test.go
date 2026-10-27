@@ -460,3 +460,59 @@ func TestNewIndexHeaderDetection(t *testing.T) {
 		t.Errorf("first entry: got %+v, expected {Key:a Offset:8}", got)
 	}
 }
+
+// Test that lines longer than the blocksize can be indexed and searched
+func TestNewIndexLongLines(t *testing.T) {
+	long := strings.Repeat("x", 3000)
+	data := "a,1\nb," + long + "\nc,3\nd," + long + long + "\ne,5\n"
+
+	for _, blocksize := range []int{0, 64} { // 0 means the default (2048)
+		path := filepath.Join(t.TempDir(), "data.csv")
+		if err := os.WriteFile(path, []byte(data), 0644); err != nil {
+			t.Fatal(err)
+		}
+		idx, err := NewIndexOptions(path, IndexOptions{Blocksize: blocksize})
+		if err != nil {
+			t.Fatalf("blocksize %d: %s", blocksize, err)
+		}
+		if err := idx.Write(); err != nil {
+			t.Fatal(err)
+		}
+
+		s, err := NewSearcher(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expect := map[string]string{"a": "a,1", "b": "b," + long, "c": "c,3",
+			"d": "d," + long + long, "e": "e,5"}
+		for _, key := range []string{"a", "b", "c", "d", "e"} {
+			line, err := s.Line([]byte(key))
+			if err != nil {
+				t.Errorf("blocksize %d, %s: got error %v", blocksize, key, err)
+				continue
+			}
+			if string(line) != expect[key] {
+				t.Errorf("blocksize %d, %s: got %d-byte line, expected %d bytes",
+					blocksize, key, len(line), len(expect[key]))
+			}
+		}
+		s.Close()
+	}
+}
+
+// Test that a line over maxLineLength gives an error naming the line
+func TestNewIndexLineTooLong(t *testing.T) {
+	saved := maxLineLength
+	maxLineLength = 100
+	defer func() { maxLineLength = saved }()
+
+	path := filepath.Join(t.TempDir(), "data.csv")
+	data := "a,1\nb," + strings.Repeat("x", 200) + "\nc,3\n"
+	if err := os.WriteFile(path, []byte(data), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := NewIndex(path)
+	if err == nil || !strings.Contains(err.Error(), "line 2 exceeds maximum line length") {
+		t.Errorf("got %v, expected a line 2 too-long error", err)
+	}
+}

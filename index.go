@@ -38,6 +38,10 @@ var (
 	ErrIndexExpired      = errors.New("index file out of date")
 	ErrIndexEmpty        = errors.New("index contains no entries")
 	ErrIndexPathMismatch = errors.New("index file path mismatch")
+
+	// maxLineLength is the longest dataset line NewIndex accepts
+	// (a var so tests can lower it)
+	maxLineLength = 64 * 1024 * 1024
 )
 
 type IndexOptions struct {
@@ -144,9 +148,10 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 	// skipHeader: Set to true if the file contains a header that should be skipped
 	//
 	// Process dataset line-by-line
-	buf := make([]byte, index.Blocksize)
+	// Nb. bufio.Scanner's limit is the larger of maxLineLength and cap(buf)
+	buf := make([]byte, min(index.Blocksize, maxLineLength))
 	scanner := bufio.NewScanner(reader.(io.Reader))
-	scanner.Buffer(buf, index.Blocksize)
+	scanner.Buffer(buf, maxLineLength)
 	list := []IndexEntry{}
 	var blockPosition int64 = 0
 	var blockNumber int64 = -1
@@ -242,7 +247,10 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 		}
 		blockPosition += int64(len(line) + 1)
 	}
-	if err := scanner.Err(); err != nil {
+	if err := scanner.Err(); errors.Is(err, bufio.ErrTooLong) {
+		return fmt.Errorf("line %d exceeds maximum line length of %d bytes: %w",
+			lineNumber+1, maxLineLength, err)
+	} else if err != nil {
 		return err
 	}
 	if len(list) == 0 {
