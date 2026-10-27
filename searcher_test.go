@@ -343,19 +343,20 @@ func TestSearcherLinesFoo(t *testing.T) {
 
 // Benchmark Searcher.Lines()
 func BenchmarkSearcherLines(b *testing.B) {
+	ensureIndex(b, "rdns1.csv")
 	bss, err := NewSearcher("testdata/rdns1.csv")
 	if err != nil {
 		b.Fatal(err)
 	}
 	defer bss.Close()
-	prefix := []byte("162.")
+	key := []byte("032.176.184.000")
 	for i := 0; i < b.N; i++ {
-		lines, err := bss.Lines(prefix)
+		lines, err := bss.Lines(key)
 		if err != nil {
 			b.Fatal(err)
 		}
-		if len(lines) != 12 {
-			b.Fatal(fmt.Errorf("Lines returned %d results, expected 12\n", len(lines)))
+		if len(lines) != 6 {
+			b.Fatal(fmt.Errorf("Lines returned %d results, expected 6\n", len(lines)))
 		}
 	}
 }

@@ -83,7 +83,7 @@ func fixture(t *testing.T, filename string) string {
 
 // ensureIndex checks that an appropriate index exists for filename and
 // creates it if not (see fixture for checked-in indexes)
-func ensureIndex(t *testing.T, filename string) {
+func ensureIndex(t testing.TB, filename string) {
 	t.Helper()
 	path := filepath.Join("testdata", filename)
 	idxpath, err := IndexPath(path)
