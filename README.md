@@ -4,7 +4,9 @@ bsearch
 
 bsearch is a go library providing binary search functionality for line-ordered
 byte streams (such as `LC_ALL=C` sorted text files). It allows very fast
-lookups based on line prefixes, like the venerable `look(1)` unix utility.
+lookups by key, in the spirit of the venerable `look(1)` unix utility. A
+line's key is its first field, and keys match as a whole: searching for
+`foo` finds `foo,1` but not `foobar,1`.
 
 bsearch can also be used via a `DB` object with a simple db-like interface,
 allowing sorted CSV files to be used as a key-value store, with excellent
@@ -23,7 +25,7 @@ Usage
     idx, err := bsearch.NewIndex(filepath)
 
     // Alternatively, if you need to tweak the options
-    idx, err := bsearch.NewIndexOptions(filepath, IndexOptions{Delimiter: '|'})
+    idx, err := bsearch.NewIndexOptions(filepath, bsearch.IndexOptions{Delimiter: []byte("|")})
 
     // Persist the created index to disk, so that the searcher may use it
     err = idx.Write()
@@ -32,11 +34,8 @@ Usage
     bss, err := bsearch.NewSearcher(filepath)
     defer bss.Close()
 
-    // Find first line beginning with searchStr
+    // Find first line whose key is searchStr
     line, err := bss.Line([]byte(searchStr))
-
-    // Find position of first line beginning with searchStr
-    pos, err := bss.LinePosition([]byte(searchStr))
 
     // Distinguish not found from other errors
     if err != nil && err == bsearch.ErrNotFound {
@@ -51,8 +50,8 @@ Usage
     defer db.Close()
 
     // Lookup values via byteslices or strings
-    valbytes := db.Get(keybytes)
-    valstr := db.GetString(keystring)
+    valbytes, err := db.Get(keybytes)
+    valstr, err := db.GetString(keystring)
 
 ```
 
