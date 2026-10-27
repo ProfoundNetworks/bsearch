@@ -653,10 +653,6 @@ func TestLoadIndexPathMismatch(t *testing.T) {
 // Test that LoadIndex returns ErrIndexPathMismatch for a v3 index loaded
 // for a dataset other than the one it was built for
 func TestLoadIndexPathMismatchV3(t *testing.T) {
-	t.Skip("BUG: the v3 check compares filepath.Base(index.Filepath) with " +
-		"index.Filename, which LoadIndex has just derived from (or used to " +
-		"overwrite) index.Filepath, so it can never fail")
-
 	path := fixture(t, "domains2.csv")
 	sibling := filepath.Join(filepath.Dir(path), "domains2_csv")
 	copyFile(t, path, sibling)

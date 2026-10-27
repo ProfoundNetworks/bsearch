@@ -372,10 +372,10 @@ func LoadIndex(path string) (*Index, error) {
 	// Check that the file paths match to ensure that the index we loaded
 	// actually belongs with the file stored at path, since otherwise the
 	// search results will be junk.
+	// (v3 indices store the absolute Filepath they were built from, so
+	// only the base name is comparable)
 	if (index.Version >= 4 && index.Filepath != path) ||
-		(index.Version == 3 && filepath.Base(index.Filepath) != index.Filename) {
-		fmt.Fprintf(os.Stderr, "ErrIndexPathMismatch: path %q, index.Filepath %q",
-			path, index.Filepath)
+		(index.Version == 3 && index.Filename != filepath.Base(path)) {
 		return nil, ErrIndexPathMismatch
 	}
 
