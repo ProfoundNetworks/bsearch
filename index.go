@@ -62,7 +62,10 @@ type Index struct {
 	// FIXME: Delimiter should really be a rune, not an arbitrarily-length []byte
 	// Can we change without bumping the index version?
 	Delimiter []byte
-	Epoch     int64
+	Epoch     int64 // dataset mtime when indexed (unix seconds; informational)
+	// Size is the dataset size when indexed, checked by LoadIndex
+	// (absent from indices written before it was added)
+	Size int64 `json:",omitempty"`
 	// Filepath is no longer exported (it is explicitly emptied in Write()),
 	// but we keep it capitalised to accept old indices that used it
 	// instead of Filename
@@ -76,15 +79,6 @@ type Index struct {
 	Version        int
 	HeaderFields   []string     `json:",omitempty"`
 	logger         *slog.Logger // debug logger
-}
-
-// epoch returns the modtime for path in epoch/unix format
-func epoch(path string) (int64, error) {
-	stat, err := os.Stat(path)
-	if err != nil {
-		return 0, err
-	}
-	return stat.ModTime().Unix(), nil
 }
 
 // indexFile returns the index file associated with filename
@@ -276,7 +270,9 @@ func NewIndexOptions(path string, opt IndexOptions) (*Index, error) {
 	if err != nil {
 		return nil, err
 	}
-	epoch, err := epoch(path)
+	// Stat before reading, so a dataset modified while we index it looks
+	// stale to LoadIndex rather than current
+	stat, err := os.Stat(path)
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +300,8 @@ func NewIndexOptions(path string, opt IndexOptions) (*Index, error) {
 		index.Blocksize = defaultBlocksize
 	}
 	index.Delimiter = delim
-	index.Epoch = epoch
+	index.Epoch = stat.ModTime().Unix()
+	index.Size = stat.Size()
 	index.Filepath = path
 	index.Filename = filepath.Base(path)
 	index.Header = opt.Header
@@ -379,17 +376,23 @@ func LoadIndex(path string) (*Index, error) {
 		return nil, ErrIndexPathMismatch
 	}
 
-	fe, err := epoch(path)
+	// The index is stale if the dataset was modified after it was written
+	// (at full mtime resolution, not whole seconds), or if the dataset has
+	// changed size since it was indexed (which catches coarse-timestamp
+	// filesystems, and datasets replaced by files with older mtimes)
+	stat, err := os.Stat(path)
 	if err != nil {
 		return nil, err
 	}
-	ie, err := epoch(idxpath)
+	istat, err := os.Stat(idxpath)
 	if err != nil {
 		return nil, err
 	}
-	if fe > ie {
+	if stat.ModTime().After(istat.ModTime()) ||
+		(index.Size > 0 && stat.Size() != index.Size) {
 		return nil, ErrIndexExpired
 	}
+	datasize := stat.Size()
 
 	if index.Version == 0 {
 		index.Version = 1
@@ -400,11 +403,6 @@ func LoadIndex(path string) (*Index, error) {
 	if index.Length <= 0 {
 		return nil, ErrIndexEmpty
 	}
-	stat, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-	datasize := stat.Size()
 
 	for counter := 0; counter < index.Length; counter++ {
 		line, err := reader.ReadString(recordSeparator)

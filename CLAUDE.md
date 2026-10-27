@@ -63,7 +63,11 @@ The root package has three layers:
 - **`NewSearcher` requires an existing index.** `LoadIndex` returns one of
   these errors:
   - `ErrIndexNotFound`
-  - `ErrIndexExpired` (the dataset's mtime is newer than the index)
+  - `ErrIndexExpired`: the dataset's mtime is newer than the index file's
+    (compared at full resolution, not whole seconds), or the dataset's size
+    differs from the `Size` recorded at indexing. Indexes written before
+    `Size` was added skip the size check. Don't require exact mtime
+    equality: datasets moved with plain `cp` get new mtimes.
   - `ErrIndexPathMismatch` (the stored `Filename` doesn't match)
 
   `Write()` blanks `Filepath` and stores only `Filename`, so an index stays

@@ -93,7 +93,7 @@ func ensureIndex(t testing.TB, filename string) {
 	if err != nil {
 		t.Fatalf("ensureIndex %s: %s\n", filename, err.Error())
 	}
-	stat, err := os.Stat(idxpath)
+	_, err = os.Stat(idxpath)
 	if err != nil && !os.IsNotExist(err) {
 		t.Fatalf("ensureIndex %s: %s\n", filename, err.Error())
 	}
@@ -108,13 +108,8 @@ func ensureIndex(t testing.TB, filename string) {
 		}
 		return
 	}
-	// Index exists - check it is newer than file or recreate
-	fe, err := epoch(path)
-	if err != nil {
-		t.Fatalf("ensureIndex epoch %s: %s", filename, err.Error())
-	}
-	ie := stat.ModTime().Unix()
-	if fe > ie {
+	// Index exists - recreate it if LoadIndex finds it stale or invalid
+	if _, err := LoadIndex(path); err != nil {
 		idx, err := NewIndex(path)
 		if err != nil {
 			t.Fatalf("ensureIndex NewIndex on %q: %s\n", path, err.Error())
@@ -796,5 +791,68 @@ func TestNewIndexEmpty(t *testing.T) {
 		if !errors.Is(err, ErrIndexEmpty) {
 			t.Errorf("%s: got error %v (index %v), expected ErrIndexEmpty", tc.name, err, idx)
 		}
+	}
+}
+
+// setMtimes sets path's mtime and that of its index, to the given times
+func setMtimes(t *testing.T, path string, data, index time.Time) {
+	t.Helper()
+	idxpath, err := IndexPath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, data, data); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(idxpath, index, index); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Test LoadIndex staleness detection: sub-second mtimes and dataset size
+func TestLoadIndexStaleness(t *testing.T) {
+	// A fixed whole second, plus a fraction, so both mtimes share a second
+	base := time.Date(2026, 1, 2, 3, 4, 5, 100_000_000, time.UTC)
+
+	// New indexes record the dataset size
+	path := indexedData(t, "data.csv", "a,1\nb,2\n", IndexOptions{})
+	header, _ := readIndex(t, path)
+	if size, ok := header["Size"].(float64); !ok || size != 8 {
+		t.Errorf("Size: got %v, expected 8", header["Size"])
+	}
+
+	// Dataset modified 1ms after its index, within the same second
+	setMtimes(t, path, base.Add(time.Millisecond), base)
+	if _, err := LoadIndex(path); err != ErrIndexExpired {
+		t.Errorf("dataset 1ms newer: got %v, expected ErrIndexExpired", err)
+	}
+
+	// Dataset size changed, but its mtime is older than the index's
+	if err := os.WriteFile(path, []byte("a,1\nb,22\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	setMtimes(t, path, base.Add(-time.Hour), base)
+	if _, err := LoadIndex(path); err != ErrIndexExpired {
+		t.Errorf("dataset resized, older mtime: got %v, expected ErrIndexExpired", err)
+	}
+
+	// An old index without Size skips the size check
+	path = indexedData(t, "data.csv", "a,1\nb,2\n", IndexOptions{})
+	header, body := readIndex(t, path)
+	delete(header, "Size")
+	writeIndex(t, path, header, body)
+	if err := os.WriteFile(path, []byte("a,1\nb,22\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	setMtimes(t, path, base.Add(-time.Hour), base)
+	if _, err := LoadIndex(path); err != nil {
+		t.Errorf("index without Size: got %v, expected nil", err)
+	}
+
+	// Copying dataset then index elsewhere (new mtimes, same size) is fine
+	path = indexedData(t, "data.csv", "a,1\nb,2\n", IndexOptions{})
+	setMtimes(t, path, base, base.Add(time.Millisecond))
+	if _, err := LoadIndex(path); err != nil {
+		t.Errorf("relocated: got %v, expected nil", err)
 	}
 }
