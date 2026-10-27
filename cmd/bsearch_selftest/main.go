@@ -109,25 +109,25 @@ func processBatch(bss *bsearch.Searcher, key string, batch []string, rownum int)
 	lines, err := bss.Lines([]byte(key))
 	if err != nil {
 		diag := "# " + err.Error()
-		for i, line := range lines {
-			tap(rownum+i, "not ok", string(line), diag)
+		for i, line := range batch {
+			tap(rownum+i, "not ok", line, diag)
 		}
 		return
 	}
 
-	// Check that every line exists in batch
-	bmap := make(map[string]bool)
-	for _, line := range batch {
-		bmap[line] = true
+	// Check that every input line in batch is among the lines found
+	found := make(map[string]bool)
+	for _, line := range lines {
+		found[string(line)] = true
 	}
-	for i, line := range lines {
+	for i, line := range batch {
 		status := "ok"
 		diag := ""
-		if !bmap[string(line)] {
+		if !found[line] {
 			status = "not ok"
-			diag = fmt.Sprintf("# entry not found for key %q: %s", key, line)
+			diag = fmt.Sprintf("# line not found for key %q", key)
 		}
-		tap(rownum+i, status, string(line), diag)
+		tap(rownum+i, status, line, diag)
 	}
 }
 

@@ -332,12 +332,11 @@ func TestSelftestNotOK(t *testing.T) {
 			"not ok 1 aaa.com\n# key not found\n" +
 				"not ok 2 adweek.com\n# got \"adweek.com,305\", expected \"adweek.com,999\"\n" +
 				"ok 3 zend.com\n"},
-		// Duplicate keys: processBatch reports each dataset line for the
-		// key that is missing from the input batch
+		// Duplicate keys: processBatch reports each input line that isn't
+		// among the dataset's lines for its key
 		{"batch", "rdns1.csv", "001.000.128.000,wrong\n",
-			"not ok 1 001.000.128.000,node-0.pool-1-0.dynamic.totinternet.net,202003,totinternet.net\n" +
-				"# entry not found for key \"001.000.128.000\": " +
-				"001.000.128.000,node-0.pool-1-0.dynamic.totinternet.net,202003,totinternet.net\n"},
+			"not ok 1 001.000.128.000,wrong\n" +
+				"# line not found for key \"001.000.128.000\"\n"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -350,11 +349,6 @@ func TestSelftestNotOK(t *testing.T) {
 
 // Test that the batch path reports input lines that can't be found
 func TestSelftestBatchNotFound(t *testing.T) {
-	t.Skip("BUG: processBatch only checks that the dataset's lines for a key " +
-		"appear in the input batch. A key missing from the dataset prints " +
-		"nothing (Lines returns nil lines with ErrNotFound, so the not-ok loop " +
-		"never runs), and an extra input line for a present key is never reported.")
-
 	dupLines := ""
 	for i := range 6 {
 		dupLines += fmt.Sprintf("032.176.184.000,mobile%03d.mycingular.net,202003,mycingular.net\n", i)
@@ -364,8 +358,10 @@ func TestSelftestBatchNotFound(t *testing.T) {
 		stdin  string
 		expect string // a not ok line expected in stdout
 	}{
-		{"missing key", "999.000.000.000,x\n", "not ok 1 999.000.000.000"},
-		{"extra line", dupLines + "032.176.184.000,zzz\n", "not ok 7 032.176.184.000,zzz"},
+		{"missing key", "999.000.000.000,x\n",
+			"not ok 1 999.000.000.000,x\n# key not found"},
+		{"extra line", dupLines + "032.176.184.000,zzz\n",
+			"not ok 7 032.176.184.000,zzz\n# line not found for key \"032.176.184.000\""},
 	}
 	data := readTestdata(t, "rdns1.csv")
 	path, _ := indexedTemp(t, "rdns1.csv", data)
