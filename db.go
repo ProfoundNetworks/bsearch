@@ -29,17 +29,17 @@ func NewDB(path string) (*DB, error) {
 	return &DB{bss: bss}, nil
 }
 
-// Get returns the (first) value associated with key in db
-// (or ErrNotFound if missing)
-func (db *DB) Get(key []byte) ([]byte, error) {
+// value returns the (first) value associated with key in db, and whether
+// the line holds only the key (no delimiter, so no value fields at all)
+func (db *DB) value(key []byte) ([]byte, bool, error) {
 	line, err := db.bss.Line(key)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	// A line consisting only of key has an empty value
 	if bytes.Equal(line, key) {
-		return []byte{}, nil
+		return []byte{}, true, nil
 	}
 
 	// Remove leading key+delimiter from line
@@ -50,9 +50,14 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 			fmt.Sprintf("line returned for %q does not begin with key+delim: %s\n",
 				key, line))
 	}
-	line = bytes.TrimPrefix(line, prefix)
+	return bytes.TrimPrefix(line, prefix), false, nil
+}
 
-	return line, nil
+// Get returns the (first) value associated with key in db
+// (or ErrNotFound if missing)
+func (db *DB) Get(key []byte) ([]byte, error) {
+	val, _, err := db.value(key)
+	return val, err
 }
 
 // GetString returns the (first) value associated with key in db, as a string
@@ -69,7 +74,7 @@ func (db *DB) GetString(key string) (string, error) {
 // slice (read using a csv.Reader with the appropriate Delimiter)
 // (or returns ErrNotFound if missing)
 func (db *DB) GetSlice(key string) ([]string, error) {
-	val, err := db.Get([]byte(key))
+	val, keyOnly, err := db.value([]byte(key))
 	if err != nil {
 		return []string{}, err
 	}
@@ -77,6 +82,14 @@ func (db *DB) GetSlice(key string) ([]string, error) {
 	if len(delim) > 1 {
 		return []string{},
 			fmt.Errorf("cannot convert multi-character delimiter %q to rune", delim)
+	}
+	// csv.Reader returns io.EOF for empty input, so handle that here: a
+	// key-only line has no fields, and "key<delim>" one empty field
+	if keyOnly {
+		return []string{}, nil
+	}
+	if len(val) == 0 {
+		return []string{""}, nil
 	}
 	reader := csv.NewReader(bytes.NewReader(val))
 	reader.Comma = rune(delim[0])

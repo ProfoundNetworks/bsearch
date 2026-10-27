@@ -234,9 +234,6 @@ func TestDBGetSliceFields(t *testing.T) {
 
 // Test DB.GetSlice() on lines with an empty value
 func TestDBGetSliceEmptyValue(t *testing.T) {
-	t.Skip("BUG: GetSlice returns io.EOF from csv.Reader.Read when the " +
-		"value is empty, although the key exists and Get returns no error")
-
 	var tests = []struct {
 		key    string
 		expect []string
