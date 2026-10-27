@@ -151,12 +151,14 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 	var blockPosition int64 = 0
 	var blockNumber int64 = -1
 	prevKey := []byte{}
-	prevLine := []byte{}
+	firstLine := []byte{}
+	lineNumber := 0
 	var firstOffset int64 = -1
 	index.KeysUnique = true
 	skipHeader := index.Header
 	for scanner.Scan() {
 		line := scanner.Bytes()
+		lineNumber++
 
 		if skipHeader {
 			// If index.Header is set, skip the first line of the dataset,
@@ -187,9 +189,9 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 		case 1:
 			// Special case - allow second record out-of-order due to header
 			// FIXME: should we have an option to disallow this?
-			if blockNumber == 0 && !index.Header {
+			if lineNumber == 2 && !index.Header {
 				index.Header = true
-				fields, err := csvSplitBytes(prevLine, string(index.Delimiter))
+				fields, err := csvSplitBytes(firstLine, string(index.Delimiter))
 				if err != nil {
 					return err
 				}
@@ -235,8 +237,8 @@ func generateLineIndex(index *Index, reader io.ReaderAt) error {
 			firstOffset = blockPosition
 			prevKey = clonebs(key)
 		}
-		if blockNumber == 0 {
-			prevLine = clonebs(line)
+		if lineNumber == 1 {
+			firstLine = clonebs(line)
 		}
 		blockPosition += int64(len(line) + 1)
 	}

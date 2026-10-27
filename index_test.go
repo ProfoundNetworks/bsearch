@@ -1,6 +1,7 @@
 package bsearch
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -402,5 +403,60 @@ func TestNewIndexClosesFile(t *testing.T) {
 	}
 	if after := openFDs(t); after != before {
 		t.Errorf("open file descriptors went from %d to %d", before, after)
+	}
+}
+
+// Test that NewIndex rejects out-of-order keys anywhere in the dataset,
+// including within the first block (where only an out-of-order second
+// line is allowed, as the sign of a header)
+func TestNewIndexSortViolation(t *testing.T) {
+	var tests = []struct {
+		name string
+		data string
+		opt  IndexOptions
+	}{
+		{"line 3", "a,1\nc,2\nb,3\n", IndexOptions{}},
+		{"line 5", "a,1\nb,2\nc,3\nd,4\nb,5\n", IndexOptions{}},
+		{"after header", "key,val\na,1\nc,2\nb,3\n", IndexOptions{}},
+		{"after explicit header", "key,val\na,1\nc,2\nb,3\n", IndexOptions{Header: true}},
+		{"later in first block", "a,1\n" + strings.Repeat("b,2\n", 100) + "a,3\n", IndexOptions{}},
+	}
+
+	dir := t.TempDir()
+	for i, tc := range tests {
+		path := filepath.Join(dir, fmt.Sprintf("data%d.csv", i))
+		if err := os.WriteFile(path, []byte(tc.data), 0644); err != nil {
+			t.Fatal(err)
+		}
+		idx, err := NewIndexOptions(path, tc.opt)
+		if err == nil || !strings.Contains(err.Error(), "key sort violation") {
+			var header []string
+			if idx != nil {
+				header = idx.HeaderFields
+			}
+			t.Errorf("%s: got err %v (header %q), expected key sort violation",
+				tc.name, err, header)
+		}
+	}
+}
+
+// Test that an out-of-order second line is still detected as a header
+func TestNewIndexHeaderDetection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.csv")
+	if err := os.WriteFile(path, []byte("key,val\na,1\nb,2\nb,3\nc,4\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	idx, err := NewIndex(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !idx.Header {
+		t.Errorf("header: got false, expected true")
+	}
+	if expect := []string{"key", "val"}; !slices.Equal(idx.HeaderFields, expect) {
+		t.Errorf("headerFields: got %q, expected %q", idx.HeaderFields, expect)
+	}
+	if got := idx.List[0]; got.Key != "a" || got.Offset != 8 {
+		t.Errorf("first entry: got %+v, expected {Key:a Offset:8}", got)
 	}
 }
