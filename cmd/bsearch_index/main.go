@@ -18,22 +18,47 @@ import (
 	"log/slog"
 
 	"github.com/ProfoundNetworks/bsearch"
-	flags "github.com/jessevdk/go-flags"
+	"github.com/alecthomas/kong"
+	helpcolours "github.com/gavincarr/kong-help-colours"
 	"github.com/lmittmann/tint"
 	yaml "gopkg.in/yaml.v3"
 )
 
-// Options
-var opts struct {
-	Verbose   []bool `short:"v" long:"verbose" description:"display verbose debug output"`
-	Delim     string `short:"t" long:"sep" description:"separator/delimiter character"`
-	Header    bool   `long:"hdr" description:"Filename includes a header, which should be skipped (usually optional)"`
-	Force     bool   `short:"f" long:"force" description:"force index generation even if up-to-date"`
-	Cat       bool   `short:"c" long:"cat" description:"write generated index to stdout instead of to file"`
-	Blocksize int    `short:"b" long:"bs" description:"index blocksize (kB, default 2kB)"`
+// Options. Every field carries an explicit name: tag, so kong never derives
+// a flag name from the field name. Verbose is a counter rather than go-flags'
+// []bool idiom, which makes kong hang.
+type Options struct {
+	Verbose   int    `short:"v" name:"verbose" type:"counter" help:"display verbose debug output"`
+	Delim     string `short:"t" name:"sep" help:"separator/delimiter character"`
+	Header    bool   `name:"hdr" help:"Filename includes a header, which should be skipped (usually optional)"`
+	Force     bool   `short:"f" name:"force" help:"force index generation even if up-to-date"`
+	Cat       bool   `short:"c" name:"cat" help:"write generated index to stdout instead of to file"`
+	Blocksize int    `short:"b" name:"bs" help:"index blocksize (kB, default 2kB)"`
 	Args      struct {
-		Filename string
-	} `positional-args:"yes" required:"yes"`
+		Filename string `arg:"" name:"Filename"`
+	} `embed:""`
+}
+
+var opts Options
+
+// newParser builds the kong parser for bsearch_index over o.
+func newParser(o *Options) (*kong.Kong, error) {
+	return kong.New(o,
+		kong.Name("bsearch_index"),
+		kong.Description("Generate a bsearch index file for a dataset."),
+		kong.UsageOnError(),
+		kong.Help(helpcolours.Help),
+		kong.Exit(exitOnUsageError),
+	)
+}
+
+// exitOnUsageError maps kong's usage-error status (80) onto 2. The code != 0
+// guard is load-bearing: kong routes --help through here with 0.
+func exitOnUsageError(code int) {
+	if code != 0 {
+		code = 2
+	}
+	os.Exit(code)
 }
 
 func die(msg string) {
@@ -42,22 +67,21 @@ func die(msg string) {
 }
 
 func main() {
-	// Parse default options are HelpFlag | PrintErrors | PassDoubleDash
-	parser := flags.NewParser(&opts, flags.Default)
-	_, err := parser.Parse()
+	// Parse options
+	parser, err := newParser(&opts)
 	if err != nil {
-		if flags.WroteHelp(err) {
-			os.Exit(0)
-		}
-
-		// Does PrintErrors work? Is it not set?
-		fmt.Fprintln(os.Stderr, "")
-		parser.WriteHelp(os.Stderr)
+		fmt.Fprintln(os.Stderr, "Error: "+err.Error())
 		os.Exit(2)
+	}
+	if _, err := parser.Parse(os.Args[1:]); err != nil {
+		// kong's UsageOnError writes usage to parser.Stdout; keep it on
+		// stderr. --help exits inside Parse, so it still goes to stdout.
+		parser.Stdout = os.Stderr
+		parser.FatalIfErrorf(err)
 	}
 
 	// Setup
-	setupLogging(len(opts.Verbose))
+	setupLogging(opts.Verbose)
 
 	// Noop if a valid index already exists (unless --force is specified)
 	if !opts.Force && !opts.Cat {
@@ -73,7 +97,7 @@ func main() {
 	if opts.Header {
 		idxopt.Header = true
 	}
-	if len(opts.Verbose) > 0 {
+	if opts.Verbose > 0 {
 		idxopt.Logger = slog.Default()
 	}
 	if opts.Blocksize > 0 {

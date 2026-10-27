@@ -80,8 +80,16 @@ The root package has three layers:
 
 ### CLIs (`cmd/`)
 
-These use `jessevdk/go-flags` for options and `slog` + `tint` for logging
-(`-v` for info, `-vv` for debug).
+Each lives in `cmd/<tool>/main.go`. They use `slog` + `tint` for logging
+(`-v` for info, `-vv` for debug) and `kong` + `kong-help-colours` for
+options. Each defines a `newParser` that both `main` and its grammar tests
+use. Keep these kong conventions:
+- an explicit `name:` tag on every field;
+- `Verbose` as `type:"counter"`, never `[]bool`, which hangs kong;
+- usage errors exit 2, with usage on stderr;
+- `--help` exits 0, with help on stdout.
+
+The `main_test.go` in each tool checks both streams separately.
 
 - `bsearch_index` builds and writes the index. `--cat` dumps it as YAML
   instead; `-b` sets the blocksize in kB.

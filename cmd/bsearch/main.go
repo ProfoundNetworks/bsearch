@@ -1,4 +1,4 @@
-// Binary search ordered Filename for lines beginning with SearchString
+// Binary search ordered Filename for lines whose key is SearchString
 
 package main
 
@@ -13,32 +13,49 @@ import (
 	"log/slog"
 
 	"github.com/ProfoundNetworks/bsearch"
-	flags "github.com/jessevdk/go-flags"
+	"github.com/alecthomas/kong"
+	helpcolours "github.com/gavincarr/kong-help-colours"
 	"github.com/lmittmann/tint"
 )
 
-// Options
-var opts struct {
-	Verbose []bool `short:"v" long:"verbose" description:"display verbose debug output"`
-	Header  bool   `short:"H" long:"hdr" description:"ignore first line (header) in Filename when doing lookups"`
-	Rev     bool   `short:"r" long:"rev" description:"reverse SearchString for search, and reverse output lines when printing"`
-	Stdin   bool   `short:"c" long:"stdin" description:"read SearchStrings from standard input instead of command line"`
+// Options. Every field carries an explicit name: tag, so kong never derives
+// a flag name from the field name. Verbose is a counter rather than go-flags'
+// []bool idiom, which makes kong hang.
+type Options struct {
+	Verbose int  `short:"v" name:"verbose" type:"counter" help:"display verbose debug output"`
+	Header  bool `short:"H" name:"hdr" help:"ignore first line (header) in Filename when doing lookups"`
+	Rev     bool `short:"r" name:"rev" help:"reverse SearchString for search, and reverse output lines when printing"`
+	Stdin   bool `short:"c" name:"stdin" help:"read SearchStrings from standard input instead of command line"`
 	Args    struct {
-		SearchString string
-		Filename     string
-	} `positional-args:"yes" required:"yes"`
+		SearchString string `arg:"" name:"SearchString"`
+		Filename     string `arg:"" name:"Filename"`
+	} `embed:""`
 }
 
-// Disable flags.PrintErrors for more control
-var parser = flags.NewParser(&opts, flags.Default&^flags.PrintErrors)
+var opts Options
 
-func usage() {
-	parser.WriteHelp(os.Stderr)
-	os.Exit(2)
+// newParser builds the kong parser for bsearch over o.
+func newParser(o *Options) (*kong.Kong, error) {
+	return kong.New(o,
+		kong.Name("bsearch"),
+		kong.Description("Binary search ordered Filename for lines whose key is SearchString."),
+		kong.UsageOnError(),
+		kong.Help(helpcolours.Help),
+		kong.Exit(exitOnUsageError),
+	)
+}
+
+// exitOnUsageError maps kong's usage-error status (80) onto 2. The code != 0
+// guard is load-bearing: kong routes --help through here with 0.
+func exitOnUsageError(code int) {
+	if code != 0 {
+		code = 2
+	}
+	os.Exit(code)
 }
 
 func vprintf(format string, args ...interface{}) {
-	if len(opts.Verbose) > 1 {
+	if opts.Verbose > 1 {
 		fmt.Fprintf(os.Stderr, format, args...)
 	}
 }
@@ -50,20 +67,24 @@ func die(msg string) {
 
 func main() {
 	// Parse options
-	_, err := parser.Parse()
+	parser, err := newParser(&opts)
 	if err != nil {
-		if flagsErr, ok := err.(*flags.Error); ok && flagsErr.Type != flags.ErrHelp {
-			fmt.Fprintf(os.Stderr, "%s\n\n", err)
-		}
-		usage()
+		fmt.Fprintln(os.Stderr, "Error: "+err.Error())
+		os.Exit(2)
+	}
+	if _, err := parser.Parse(os.Args[1:]); err != nil {
+		// kong's UsageOnError writes usage to parser.Stdout; keep it on
+		// stderr. --help exits inside Parse, so it still goes to stdout.
+		parser.Stdout = os.Stderr
+		parser.FatalIfErrorf(err)
 	}
 
 	// Setup
-	setupLogging(len(opts.Verbose))
+	setupLogging(opts.Verbose)
 
 	// Instantiate searcher
 	o := bsearch.SearcherOptions{Header: opts.Header}
-	if len(opts.Verbose) > 0 {
+	if opts.Verbose > 0 {
 		o.Logger = slog.Default()
 	}
 	bss, err := bsearch.NewSearcherOptions(opts.Args.Filename, o)
@@ -77,7 +98,7 @@ func main() {
 	case err != nil:
 		die(err.Error())
 	}
-	if len(opts.Verbose) > 0 {
+	if opts.Verbose > 0 {
 		idxpath, err := bsearch.IndexPath(opts.Args.Filename)
 		if err != nil {
 			die(err.Error())

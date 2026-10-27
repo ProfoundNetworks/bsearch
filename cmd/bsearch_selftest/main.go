@@ -14,19 +14,43 @@ import (
 	"log/slog"
 
 	"github.com/ProfoundNetworks/bsearch"
-	flags "github.com/jessevdk/go-flags"
+	"github.com/alecthomas/kong"
+	helpcolours "github.com/gavincarr/kong-help-colours"
 	"github.com/lmittmann/tint"
 )
 
-// Options
-var opts struct {
-	Verbose []bool `short:"v" long:"verbose" description:"display verbose debug output"`
-	Sep     string `short:"t" long:"sep" description:"separator"`
-	Header  bool   `short:"H" long:"hdr" description:"CSV file includes a header (don't test)"`
-	Stdin   bool   `short:"i" long:"stdin" description:"read test data from stdin instead of from CSVFile"`
+// Options. Every field carries an explicit name: tag, so kong never derives
+// a flag name from the field name. Verbose is a counter rather than go-flags'
+// []bool idiom, which makes kong hang.
+type Options struct {
+	Verbose int    `short:"v" name:"verbose" type:"counter" help:"display verbose debug output"`
+	Sep     string `short:"t" name:"sep" help:"separator"`
+	Header  bool   `short:"H" name:"hdr" help:"CSV file includes a header (don't test)"`
+	Stdin   bool   `short:"i" name:"stdin" help:"read test data from stdin instead of from CSVFile"`
 	Args    struct {
-		CSVFile string `description:"CSV file to be processed"`
-	} `positional-args:"yes" required:"yes"`
+		CSVFile string `arg:"" name:"CSVFile" help:"CSV file to be processed"`
+	} `embed:""`
+}
+
+var opts Options
+
+// newParser builds the kong parser for bsearch_selftest over o.
+func newParser(o *Options) (*kong.Kong, error) {
+	return kong.New(o,
+		kong.Name("bsearch_selftest"),
+		kong.UsageOnError(),
+		kong.Help(helpcolours.Help),
+		kong.Exit(exitOnUsageError),
+	)
+}
+
+// exitOnUsageError maps kong's usage-error status (80) onto 2. The code != 0
+// guard is load-bearing: kong routes --help through here with 0.
+func exitOnUsageError(code int) {
+	if code != 0 {
+		code = 2
+	}
+	os.Exit(code)
 }
 
 func die(msg string) {
@@ -104,22 +128,21 @@ func processBatch(bss *bsearch.Searcher, key string, batch []string, rownum int)
 }
 
 func main() {
-	// Parse default options are HelpFlag | PrintErrors | PassDoubleDash
-	parser := flags.NewParser(&opts, flags.Default)
-	_, err := parser.Parse()
+	// Parse options
+	parser, err := newParser(&opts)
 	if err != nil {
-		if flags.WroteHelp(err) {
-			os.Exit(0)
-		}
-
-		// Does PrintErrors work? Is it not set?
-		fmt.Fprintln(os.Stderr, "")
-		parser.WriteHelp(os.Stderr)
+		fmt.Fprintln(os.Stderr, "Error: "+err.Error())
 		os.Exit(2)
+	}
+	if _, err := parser.Parse(os.Args[1:]); err != nil {
+		// kong's UsageOnError writes usage to parser.Stdout; keep it on
+		// stderr. --help exits inside Parse, so it still goes to stdout.
+		parser.Stdout = os.Stderr
+		parser.FatalIfErrorf(err)
 	}
 
 	// Setup
-	setupLogging(len(opts.Verbose))
+	setupLogging(opts.Verbose)
 	var fh *os.File
 	if opts.Stdin {
 		fh = os.Stdin
