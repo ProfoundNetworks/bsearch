@@ -497,3 +497,24 @@ func TestNewSearcherErrorReleases(t *testing.T) {
 		t.Errorf("%s still mapped after failed NewSearcher", path)
 	}
 }
+
+// Test that lookups on a closed Searcher return ErrClosed
+func TestSearcherClosed(t *testing.T) {
+	s, err := NewSearcher(fixture(t, "foo.csv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s.Close() // second Close is a no-op
+
+	key := []byte("bar")
+	if _, err := s.Line(key); err != ErrClosed {
+		t.Errorf("Line: got %v, expected ErrClosed", err)
+	}
+	if _, err := s.Lines(key); err != ErrClosed {
+		t.Errorf("Lines: got %v, expected ErrClosed", err)
+	}
+	if _, err := s.LinesN(key, 2); err != ErrClosed {
+		t.Errorf("LinesN: got %v, expected ErrClosed", err)
+	}
+}

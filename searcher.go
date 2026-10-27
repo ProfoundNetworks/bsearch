@@ -28,6 +28,7 @@ var (
 	ErrNotFound            = errors.New("key not found")
 	ErrKeyExceedsBlocksize = errors.New("key length exceeds blocksize")
 	ErrUnknownDelimiter    = errors.New("cannot guess delimiter from filename")
+	ErrClosed              = errors.New("searcher is closed")
 
 	reCompressedUnsupported = regexp.MustCompile(`\.(zst|gz|bz2|br|xz|zip)$`)
 )
@@ -51,6 +52,7 @@ type Searcher struct {
 	Index    *Index       // bsearch index
 	matchLE  bool         // LinePosition uses less-than-or-equal-to match semantics
 	logger   *slog.Logger // debug logger
+	closed   bool         // set by Close
 }
 
 //buf      []byte          // data buffer
@@ -254,6 +256,10 @@ func (s *Searcher) Lines(b []byte) ([][]byte, error) {
 // LinesN returns the first n lines in the reader that begin with key,
 // using a binary search (data must be bytewise-ordered).
 func (s *Searcher) LinesN(key []byte, n int) ([][]byte, error) {
+	if s.closed {
+		return [][]byte{}, ErrClosed
+	}
+
 	// If keys are unique max(n) is 1
 	if n == 0 && s.Index.KeysUnique {
 		n = 1
@@ -272,8 +278,10 @@ func (s *Searcher) LinesN(key []byte, n int) ([][]byte, error) {
 }
 
 // Close unmaps the searcher's data and closes its reader (if applicable).
-// The searcher must not be used after Close.
+// Lookups after Close return ErrClosed. Close must not be called
+// concurrently with lookups.
 func (s *Searcher) Close() {
+	s.closed = true
 	if s.mmap != nil {
 		s.mmap.Unmap()
 		s.mmap = nil

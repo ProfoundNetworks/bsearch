@@ -155,3 +155,22 @@ func TestDBGetSingleColumn(t *testing.T) {
 		}
 	}
 }
+
+// Test that lookups on a closed DB return ErrClosed
+func TestDBClosed(t *testing.T) {
+	db, err := NewDB(fixture(t, "foo.csv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	if _, err := db.Get([]byte("bar")); err != ErrClosed {
+		t.Errorf("Get: got %v, expected ErrClosed", err)
+	}
+	if _, err := db.GetString("bar"); err != ErrClosed {
+		t.Errorf("GetString: got %v, expected ErrClosed", err)
+	}
+	if _, err := db.GetSlice("bar"); err != ErrClosed {
+		t.Errorf("GetSlice: got %v, expected ErrClosed", err)
+	}
+}
